@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Online Thulla Card Table </title>
+    <title>Online Thulla Card Table</title>
     <!-- Include Supabase Realtime Client Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -114,6 +114,7 @@
             background: rgba(0,0,0,0.2);
             padding: 8px;
             border-radius: 5px;
+            line-height: 1.6;
         }
         .hand-header-row {
             display: flex;
@@ -132,8 +133,8 @@
             align-items: center;
         }
 
-        /* Transfer Request Banner */
-        #incoming-request-box {
+        /* Notifications Panels */
+        #incoming-request-box, #recall-vote-box {
             display: none;
             background: #1565c0;
             border: 2px solid #fff;
@@ -143,6 +144,23 @@
             align-items: center;
             justify-content: space-between;
             box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+        }
+        #recall-vote-box { background: #455a64; }
+
+        /* Dynamic Turn Status Banner */
+        #turn-status-banner {
+            display: none;
+            width: 100%;
+            background: #2e7d32;
+            color: white;
+            text-align: center;
+            padding: 8px;
+            font-weight: bold;
+            border-radius: 5px;
+            margin-bottom: 12px;
+            font-size: 16px;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+            border: 1px solid #a5d6a7;
         }
 
         /* Card Styling */
@@ -210,6 +228,15 @@
             padding: 10px;
             border-radius: 6px;
         }
+        .bottom-recall-bar {
+            margin-top: 15px;
+            text-align: center;
+            width: 100%;
+        }
+        .turn-highlight {
+            color: #ff9800;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -229,9 +256,7 @@
             <h3>Join Existing Table</h3>
             <input type="text" id="room-input" placeholder="Enter Room Code" style="width:100%; text-transform:uppercase;">
             <button onclick="joinRoom()" style="background:#2196f3; width:100%; margin-top:8px;">Connect to Table</button>
-            
         </div>
-        <h4>By pgxMSM</h4>
     </div>
 
     <!-- SECTION 2: Live Sync Game Table -->
@@ -244,7 +269,10 @@
 
         <div class="connected-list" id="active-players-summary">Waiting for players...</div>
 
-        <!-- Blind Request Banner -->
+        <!-- Live Visual Turn Prompt Indicator Panel -->
+        <div id="turn-status-banner">🟢 IT'S YOUR TURN (FIRST THROW)</div>
+
+        <!-- Blind Transfer Request Banner -->
         <div id="incoming-request-box">
             <span id="request-text-info">Player is giving you a card...</span>
             <div>
@@ -253,35 +281,50 @@
             </div>
         </div>
 
+        <!-- Global Card Recall Voting Panel -->
+        <div id="recall-vote-box">
+            <span id="recall-text-info">Voting status...</span>
+            <div id="vote-actions-div">
+                <button onclick="submitRecallVote(true)" style="background:#4caf50; margin:0 5px; padding:6px 15px;">Accept</button>
+                <button onclick="submitRecallVote(false)" style="background:#f44336; margin:0; padding:6px 15px;">Reject</button>
+            </div>
+        </div>
+
         <!-- The Shared Multi-device surface -->
         <div class="table-surface">
             <div id="table-cards"></div>
             <div class="table-actions">
-                <button onclick="clearToPile()" style="background:#795548; font-size:12px;">Make a Pile (Burn)</button>
+                <button id="burn-btn" onclick="clearToPile()" style="background:#795548; font-size:12px;">Make a Pile (Burn)</button>
             </div>
         </div>
 
         <!-- Player Interface Panel -->
         <div class="player-hub">
             <div class="hand-header-row">
-                <h3 style="margin:0;">Your Private Hand (<span id="my-name-display"></span>)</h3>
+                <h3 style="margin:0;">Your Private Hand (<span id="my-name-display"></span>) <span id="my-turn-display" style="color: #ff9800; margin-left: 10px;"></span></h3>
                 <button id="pick-all-btn" onclick="pickAllCards()" style="background:#e91e63; margin:0; padding:6px 12px; font-size:14px;">📥 Pick All Cards (Thulla)</button>
             </div>
             
             <div class="hand-display" id="hand-cards"></div>
 
             <div class="action-row">
-                <button onclick="throwSelected()" style="background:#4caf50;">Throw Selected Card</button>
+                <button id="throw-btn" onclick="throwSelected()" style="background:#4caf50;">Throw Selected Card</button>
                 <span style="margin: 0 10px; border-left: 1px solid #fff; height: 25px;"></span>
                 <label for="gift-select">Give Card To:</label>
                 <select id="gift-select"></select>
                 <button onclick="giftCard()" style="background:#009688;">Transfer</button>
             </div>
         </div>
+
+        <!-- Small Recall Hand Trigger Button -->
+        <div class="bottom-recall-bar">
+            <button onclick="initiateRecallHand()" style="background:#607d8b; font-size:13px; padding:6px 15px; border:1px dashed white; border-radius:4px;">
+                🔄 Vote to Recall Table (Take Cards Back)
+            </button>
+        </div>
     </div>
 
     <script>
-        // CONFIGURATION: Connected directly to your project references
         const SUPABASE_URL = 'https://qjzwpalnhrctuvwcirat.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_StitNiAsAN8fe9FbM4pzRw_Dw68bC69';
         
@@ -297,38 +340,33 @@
 
         let roomCode = '';
         let myName = '';
-        let roomState = { players: [], table_cards: [], active_transfer: {} };
+        // Added 'first_thrower' string column mapping into global database scope logic
+        let roomState = { players: [], table_cards: [], active_transfer: {}, recall_vote: {}, first_thrower: '' };
         let selectedCardIndex = null;
         let channel = null;
 
-        // Shared Sorting Helper: Groups by suit, then descending values (A -> K -> Q -> ... -> 2)
         function sortPlayerHand(handArray) {
             handArray.sort((a, b) => {
-                // First compare by suit family alphabetically
                 const suitCompare = a.suit.name.localeCompare(b.suit.name);
                 if (suitCompare !== 0) return suitCompare;
-                
-                // If suit is the same, sort by value descending (High to Low)
                 return RANK_MAP[b.value] - RANK_MAP[a.value];
             });
         }
 
-        // Step 1: Database Sync Operations
         async function createRoom() {
             setName(); if(!myName) return;
             roomCode = Math.random().toString(36).substring(2,7).toUpperCase();
             
             const { error } = await dbClient.from('card_rooms').insert([{ 
                 room_code: roomCode, 
-                players: [{ name: myName, hand: [] }], 
+                players: [{ name: myName, hand: [], turn_num: null }], 
                 table_cards: [],
-                active_transfer: {} 
+                active_transfer: {},
+                recall_vote: { active: false, requester: '', approves: [], rejects: [] },
+                first_thrower: ''
             }]);
 
-            if(error) { 
-                alert("Database Error: " + error.message); 
-                return; 
-            }
+            if(error) { alert("Database Error: " + error.message); return; }
             startRoomSubscription();
         }
 
@@ -341,7 +379,7 @@
 
             let currentPlayers = data.players;
             if(!currentPlayers.find(p => p.name === myName)) {
-                currentPlayers.push({ name: myName, hand: [] });
+                currentPlayers.push({ name: myName, hand: [], turn_num: null });
                 await dbClient.from('card_rooms').update({ players: currentPlayers }).eq('room_code', roomCode);
             }
             startRoomSubscription();
@@ -375,6 +413,8 @@
                 players: roomState.players, 
                 table_cards: roomState.table_cards,
                 active_transfer: roomState.active_transfer,
+                recall_vote: roomState.recall_vote,
+                first_thrower: roomState.first_thrower,
                 updated_at: new Date()
             }).eq('room_code', roomCode);
         }
@@ -396,10 +436,36 @@
             return targetIdx;
         }
 
-        // Step 2: UI Rendering
+        // Returns name of the player who laid the highest card matching the initial led suit family
+        function getHighestCardPlayerName() {
+            const cards = roomState.table_cards;
+            if (!cards || cards.length === 0) return '';
+            const leadSuit = cards[0].card.suit.name;
+            let highVal = -1, winnerName = '';
+            cards.forEach(item => {
+                if(item.card.suit.name === leadSuit) {
+                    let v = RANK_MAP[item.card.value];
+                    if (v > highVal) { highVal = v; winnerName = item.owner; }
+                }
+            });
+            return winnerName;
+        }
+
+        function hasUserThrownThisRound() {
+            if (!roomState.table_cards || roomState.table_cards.length === 0) return false;
+            return roomState.table_cards.some(item => item.owner === myName);
+        }
+
+        // Step 2: UI Rendering & Mode Locks
         function renderUI() {
             const summary = document.getElementById('active-players-summary');
-            summary.innerText = "Players: " + roomState.players.map(p => `${p.name} (${p.hand.length} cards)`).join(' | ');
+            const sortedPlayersByTurn = [...roomState.players].sort((a,b) => (a.turn_num || 99) - (b.turn_num || 99));
+            summary.innerHTML = "<b>Live Table Status:</b><br>" + sortedPlayersByTurn.map(p => {
+                const turnLabel = p.turn_num ? `<span class="turn-highlight">[Turn ${p.turn_num}]</span> ` : '';
+                // Append small text indicator on the general dashboard breakdown
+                const leadIndicator = (roomState.first_thrower === p.name && (!roomState.table_cards || roomState.table_cards.length === 0)) ? ' <small style="color:#4caf50;">(1st Lead)</small>' : '';
+                return `${turnLabel}${p.name} (${p.hand.length} cards)${leadIndicator}`;
+            }).join('  |  ');
 
             document.getElementById('deal-btn').style.display = (roomState.players[0]?.name === myName) ? 'block' : 'none';
 
@@ -413,7 +479,6 @@
 
             const requestBox = document.getElementById('incoming-request-box');
             const tf = roomState.active_transfer;
-            
             if (tf && tf.to === myName && tf.status === 'pending') {
                 document.getElementById('request-text-info').innerText = `📬 ${tf.from} wants to give you a card.`;
                 requestBox.style.display = 'flex';
@@ -422,18 +487,66 @@
             }
 
             if (tf && tf.from === myName && tf.status === 'rejected') {
-                alert(`❌ Transfer Rejected! Card returned to your hand.`);
+                alert(`❌ Transfer Rejected! Card returned.`);
                 let me = roomState.players.find(p => p.name === myName);
                 me.hand.push(tf.card);
-                sortPlayerHand(me.hand); // Auto-sort high to low on bounce-back
+                sortPlayerHand(me.hand);
                 roomState.active_transfer = {};
                 pushState();
                 return;
             }
 
+            const voteBox = document.getElementById('recall-vote-box');
+            const vote = roomState.recall_vote;
+            if (vote && vote.active) {
+                const totalNeeded = roomState.players.length;
+                const currentApproves = vote.approves ? vote.approves.length : 0;
+                document.getElementById('recall-text-info').innerText = `🔄 RECALL REQUEST: ${vote.requester} wants to return all cards. (Agreed: ${currentApproves} / ${totalNeeded})`;
+                
+                if (vote.approves.includes(myName) || vote.rejects.includes(myName)) {
+                    document.getElementById('vote-actions-div').style.display = 'none';
+                } else {
+                    document.getElementById('vote-actions-div').style.display = 'block';
+                }
+                voteBox.style.display = 'flex';
+            } else {
+                voteBox.style.display = 'none';
+            }
+
             const tableElem = document.getElementById('table-cards'); tableElem.innerHTML = '';
             const targetThullaIdx = getThullaTargetIndex();
             
+            const burnBtn = document.getElementById('burn-btn');
+            if (targetThullaIdx !== null) {
+                burnBtn.style.opacity = "0.3";
+                burnBtn.style.cursor = "not-allowed";
+            } else {
+                burnBtn.style.opacity = "1";
+                burnBtn.style.cursor = "pointer";
+            }
+
+            // NEW TURNS VALIDATOR: Evaluate rights for button opacity changes
+            const throwBtn = document.getElementById('throw-btn');
+            const isTableEmpty = (!roomState.table_cards || roomState.table_cards.length === 0);
+            const amIFirstThrower = (roomState.first_thrower === myName);
+            const turnStatusBanner = document.getElementById('turn-status-banner');
+
+            if (isTableEmpty && amIFirstThrower) {
+                turnStatusBanner.style.display = "block";
+                throwBtn.style.opacity = "1";
+                throwBtn.style.cursor = "pointer";
+                throwBtn.title = "You have the lead turn! Throw first.";
+            } else {
+                turnStatusBanner.style.display = "none";
+                if (hasUserThrownThisRound() || (isTableEmpty && !amIFirstThrower)) {
+                    throwBtn.style.opacity = "0.4";
+                    throwBtn.style.cursor = "not-allowed";
+                } else {
+                    throwBtn.style.opacity = "1";
+                    throwBtn.style.cursor = "pointer";
+                }
+            }
+
             if (roomState.table_cards) {
                 roomState.table_cards.forEach((item, index) => {
                     let cardDiv = document.createElement('div');
@@ -446,15 +559,19 @@
 
             const me = roomState.players.find(p => p.name === myName);
             const handElem = document.getElementById('hand-cards'); handElem.innerHTML = '';
-            if(me && me.hand) {
-                me.hand.forEach((card, idx) => {
-                    let cardDiv = document.createElement('div');
-                    cardDiv.className = `card ${card.suit.red ? 'red' : ''}`;
-                    if(idx === selectedCardIndex) cardDiv.style.border = "3px solid #ff9800";
-                    cardDiv.innerHTML = `<div>${card.value} ${card.suit.sign}</div><div class="suit-bottom">${card.value} ${card.suit.sign}</div>`;
-                    cardDiv.onclick = () => { selectedCardIndex = (selectedCardIndex === idx) ? null : idx; renderUI(); };
-                    handElem.appendChild(cardDiv);
-                });
+            
+            if(me) {
+                document.getElementById('my-turn-display').innerText = me.turn_num ? `[Turn ${me.turn_num}]` : '';
+                if(me.hand) {
+                    me.hand.forEach((card, idx) => {
+                        let cardDiv = document.createElement('div');
+                        cardDiv.className = `card ${card.suit.red ? 'red' : ''}`;
+                        if(idx === selectedCardIndex) cardDiv.style.border = "3px solid #ff9800";
+                        cardDiv.innerHTML = `<div>${card.value} ${card.suit.sign}</div><div class="suit-bottom">${card.value} ${card.suit.sign}</div>`;
+                        cardDiv.onclick = () => { selectedCardIndex = (selectedCardIndex === idx) ? null : idx; renderUI(); };
+                        handElem.appendChild(cardDiv);
+                    });
+                }
             }
             
             const currentTableCount = roomState.table_cards ? roomState.table_cards.length : 0;
@@ -475,15 +592,55 @@
                 roomState.players[pIdx % numPlayers].hand.push(deck.pop());
                 pIdx++;
             }
-            // FIXED: Applied descending sorting directly to initial distribution
             roomState.players.forEach(p => sortPlayerHand(p.hand));
+
+            let aceSpadesOwnerIndex = -1;
+            roomState.players.forEach((p, index) => {
+                const hasAceSpades = p.hand.some(c => c.value === 'A' && c.suit.name === 'Spades');
+                if (hasAceSpades) aceSpadesOwnerIndex = index;
+            });
+
+            let remainingPositions = [];
+            for(let i = 0; i < numPlayers; i++) {
+                if(i !== aceSpadesOwnerIndex) remainingPositions.push(i);
+            }
+            for (let i = remainingPositions.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [remainingPositions[i], remainingPositions[j]] = [remainingPositions[j], remainingPositions[i]];
+            }
+
+            roomState.players[aceSpadesOwnerIndex].turn_num = 1;
+            remainingPositions.forEach((playerIndex, loopIndex) => {
+                roomState.players[playerIndex].turn_num = loopIndex + 2;
+            });
+
+            // CRITICAL STEP: Set the first turn lead to whoever got the Ace of Spades
+            roomState.first_thrower = roomState.players[aceSpadesOwnerIndex].name;
+
             roomState.table_cards = [];
             roomState.active_transfer = {};
+            roomState.recall_vote = { active: false, requester: '', approves: [], rejects: [] };
             pushState();
         }
 
+        // Intercept card placement mechanics if turn bounds are violated
         function throwSelected() {
             if(selectedCardIndex === null) return;
+            
+            const isTableEmpty = (!roomState.table_cards || roomState.table_cards.length === 0);
+            const amIFirstThrower = (roomState.first_thrower === myName);
+
+            // CRITICAL STEP: Prevent a non-lead player from opening an empty table out of turn order
+            if (isTableEmpty && !amIFirstThrower) {
+                alert(`⛔ Turn Violation: Waiting for ${roomState.first_thrower} to play the first card!`);
+                return;
+            }
+
+            if (hasUserThrownThisRound()) {
+                alert("⛔ Rule Violation: You have already thrown a card in this round!");
+                return;
+            }
+
             let me = roomState.players.find(p => p.name === myName);
             let card = me.hand.splice(selectedCardIndex, 1)[0];
             if (!roomState.table_cards) roomState.table_cards = [];
@@ -494,39 +651,40 @@
 
         function pickAllCards() {
             if(!roomState.table_cards || !roomState.table_cards.length) return;
+            
+            const targetThullaIdx = getThullaTargetIndex();
+            if (targetThullaIdx !== null) {
+                const thullaOwnerName = roomState.table_cards[targetThullaIdx].owner;
+                if (myName !== thullaOwnerName) {
+                    alert(`... Only ${thullaOwnerName} can pick up these cards.`);
+                    return;
+                }
+                
+                // CRITICAL STEP: Whichever player picks up the Thulla pile gets the next First Lead Turn right away
+                roomState.first_thrower = thullaOwnerName;
+            }
+
             let me = roomState.players.find(p => p.name === myName);
             while(roomState.table_cards.length > 0) {
                 me.hand.push(roomState.table_cards.shift().card);
             }
-            sortPlayerHand(me.hand); // FIXED: Auto-sort high to low on table scoop
+            sortPlayerHand(me.hand);
             pushState();
         }
 
         function giftCard() {
-            if(selectedCardIndex === null) {
-                alert("Please select a card from your hand to transfer first.");
-                return;
-            }
+            if(selectedCardIndex === null) { alert("Select a card to transfer first."); return; }
             const tf = roomState.active_transfer;
-            if(tf && tf.status === 'pending') {
-                alert("Another transfer is currently being processed. Please wait.");
-                return;
-            }
+            if(tf && tf.status === 'pending') { alert("Another transfer is processing."); return; }
 
             let targetName = document.getElementById('gift-select').value;
             let me = roomState.players.find(p => p.name === myName);
             let stagedCard = me.hand.splice(selectedCardIndex, 1)[0];
             
-            roomState.active_transfer = {
-                from: myName,
-                to: targetName,
-                card: stagedCard,
-                status: 'pending'
-            };
-            
+            roomState.active_transfer = { from: myName, to: targetName, card: stagedCard, status: 'pending' };
             selectedCardIndex = null;
             pushState();
-            alert(`Sent transfer request to ${targetName}. Waiting for them...`);
+            alert(`Sent request to ${targetName}...`);
         }
 
         async function respondToTransfer(isAccepted) {
@@ -536,19 +694,84 @@
             if (isAccepted) {
                 let me = roomState.players.find(p => p.name === myName);
                 me.hand.push(tf.card);
-                sortPlayerHand(me.hand); // FIXED: Auto-sort high to low on incoming donation accept
+                sortPlayerHand(me.hand);
                 roomState.active_transfer = {}; 
-                alert("Card accepted and added to your hand!");
+                alert("Card added!");
             } else {
                 roomState.active_transfer.status = 'rejected';
             }
             pushState();
         }
 
+        function initiateRecallHand() {
+            if (!roomState.table_cards || roomState.table_cards.length === 0) {
+                alert("The table is completely empty! Nothing to recall.");
+                return;
+            }
+            if (roomState.recall_vote && roomState.recall_vote.active) {
+                alert("Another recall vote is already running.");
+                return;
+            }
+
+            roomState.recall_vote = {
+                active: true,
+                requester: myName,
+                approves: [myName],
+                rejects: []
+            };
+            pushState();
+        }
+
+        function submitRecallVote(agreed) {
+            if (!roomState.recall_vote || !roomState.recall_vote.active) return;
+
+            if (agreed) {
+                if (!roomState.recall_vote.approves.includes(myName)) {
+                    roomState.recall_vote.approves.push(myName);
+                }
+            } else {
+                if (!roomState.recall_vote.rejects.includes(myName)) {
+                    roomState.recall_vote.rejects.push(myName);
+                }
+            }
+
+            const totalPlayers = roomState.players.length;
+
+            if (roomState.recall_vote.rejects.length > 0) {
+                alert("Recall failed! Someone rejected the request.");
+                roomState.recall_vote = { active: false, requester: '', approves: [], rejects: [] };
+                pushState();
+                return;
+            }
+
+            if (roomState.recall_vote.approves.length === totalPlayers) {
+                alert("Recall Approved! Returning all cards back to original hands.");
+
+                while (roomState.table_cards && roomState.table_cards.length > 0) {
+                    const item = roomState.table_cards.shift();
+                    const cardOwnerObj = roomState.players.find(p => p.name === item.owner);
+                    if (cardOwnerObj) cardOwnerObj.hand.push(item.card);
+                }
+
+                roomState.players.forEach(p => sortPlayerHand(p.hand));
+                roomState.recall_vote = { active: false, requester: '', approves: [], rejects: [] };
+            }
+
+            pushState();
+        }
+
         function clearToPile() { 
             if(!roomState.table_cards || !roomState.table_cards.length) return;
+            if (getThullaTargetIndex() !== null) {
+                alert("⛔ Action Blocked: Someone has received a Thulla!");
+                return;
+            }
             
-            if(confirm("⚠️ WARNING: Are you sure you want to drop all cards into a closed pile? They will be permanently removed from this round!")) {
+            if(confirm("⚠️ WARNING: Drop all cards into a closed pile?")) {
+                // CRITICAL STEP: On a clean burn round, find who threw the highest value card of the lead family and make them 1st thrower for next round
+                const roundWinnerName = getHighestCardPlayerName();
+                roomState.first_thrower = roundWinnerName;
+
                 roomState.table_cards = []; 
                 pushState(); 
             }
@@ -556,17 +779,13 @@
 
         function setName() { myName = document.getElementById('username').value.trim(); if(!myName) alert("Enter your name first!"); }
         function leaveRoom() { if(channel) channel.unsubscribe(); location.reload(); }
-    // NEW FEATURE: Prevent accidental browser refresh or tab closing mid-game
-    window.addEventListener('beforeunload', (event) => {
-            // Only trigger warning if the player has entered an active game room
+
+        window.addEventListener('beforeunload', (event) => {
             if (roomCode && myName) {
-                // Cancel the event as stated by the standard HTML specification
                 event.preventDefault();
-                // Chrome requires returnValue to be set explicitly
-                event.returnValue = "Are you sure you want to leave the active match? Your cards will be disconnected.";
+                event.returnValue = "Are you sure you want to leave the active match?";
             }
         });
-    
     </script>
 </body>
 </html>
