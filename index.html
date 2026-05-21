@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Online Thulla Card Table</title>
+    <title>Online Thulla Card Table by pgxMSM</title>
     <!-- Include Supabase Realtime Client Library -->
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
@@ -132,6 +132,19 @@
             align-items: center;
         }
 
+        /* Transfer Request Banner */
+        #incoming-request-box {
+            display: none;
+            background: #1565c0;
+            border: 2px solid #fff;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+        }
+
         /* Card Styling */
         .card {
             width: 72px;
@@ -229,6 +242,15 @@
 
         <div class="connected-list" id="active-players-summary">Waiting for players...</div>
 
+        <!-- Blind Request Banner -->
+        <div id="incoming-request-box">
+            <span id="request-text-info">Player is giving you a card...</span>
+            <div>
+                <button onclick="respondToTransfer(true)" style="background:#4caf50; margin:0 5px; padding:6px 15px;">Accept</button>
+                <button onclick="respondToTransfer(false)" style="background:#f44336; margin:0; padding:6px 15px;">Reject</button>
+            </div>
+        </div>
+
         <!-- The Shared Multi-device surface -->
         <div class="table-surface">
             <div id="table-cards"></div>
@@ -261,7 +283,6 @@
         const SUPABASE_URL = 'https://qjzwpalnhrctuvwcirat.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_StitNiAsAN8fe9FbM4pzRw_Dw68bC69';
         
-        // FIXED LINE: Avoided naming collision crash
         const dbClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         const RANK_MAP = {'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14};
@@ -274,11 +295,23 @@
 
         let roomCode = '';
         let myName = '';
-        let roomState = { players: [], table_cards: [] };
+        let roomState = { players: [], table_cards: [], active_transfer: {} };
         let selectedCardIndex = null;
         let channel = null;
 
-        // Step 1: Database Operations & Sync Connection
+        // Shared Sorting Helper: Groups by suit, then descending values (A -> K -> Q -> ... -> 2)
+        function sortPlayerHand(handArray) {
+            handArray.sort((a, b) => {
+                // First compare by suit family alphabetically
+                const suitCompare = a.suit.name.localeCompare(b.suit.name);
+                if (suitCompare !== 0) return suitCompare;
+                
+                // If suit is the same, sort by value descending (High to Low)
+                return RANK_MAP[b.value] - RANK_MAP[a.value];
+            });
+        }
+
+        // Step 1: Database Sync Operations
         async function createRoom() {
             setName(); if(!myName) return;
             roomCode = Math.random().toString(36).substring(2,7).toUpperCase();
@@ -286,10 +319,14 @@
             const { error } = await dbClient.from('card_rooms').insert([{ 
                 room_code: roomCode, 
                 players: [{ name: myName, hand: [] }], 
-                table_cards: [] 
+                table_cards: [],
+                active_transfer: {} 
             }]);
 
-            if(error) { alert("Initialization failure."); return; }
+            if(error) { 
+                alert("Database Error: " + error.message); 
+                return; 
+            }
             startRoomSubscription();
         }
 
@@ -316,7 +353,6 @@
 
             fetchCurrentState();
 
-            // Establish real-time web socket pipeline
             channel = dbClient.channel(`room:${roomCode}`)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'card_rooms', filter: `room_code=eq.${roomCode}` }, 
                 payload => {
@@ -336,14 +372,14 @@
             await dbClient.from('card_rooms').update({ 
                 players: roomState.players, 
                 table_cards: roomState.table_cards,
+                active_transfer: roomState.active_transfer,
                 updated_at: new Date()
             }).eq('room_code', roomCode);
         }
 
-        // Step 2: The Core Thulla Logic Evaluator
         function getThullaTargetIndex() {
             const cards = roomState.table_cards;
-            if (cards.length < 2) return null;
+            if (!cards || cards.length < 2) return null;
             const leadSuit = cards[0].card.suit.name;
             let broken = cards.some(c => c.card.suit.name !== leadSuit);
             if (!broken) return null;
@@ -358,7 +394,7 @@
             return targetIdx;
         }
 
-        // Step 3: UI Painters
+        // Step 2: UI Rendering
         function renderUI() {
             const summary = document.getElementById('active-players-summary');
             summary.innerText = "Players: " + roomState.players.map(p => `${p.name} (${p.hand.length} cards)`).join(' | ');
@@ -373,20 +409,42 @@
                 }
             });
 
+            const requestBox = document.getElementById('incoming-request-box');
+            const tf = roomState.active_transfer;
+            
+            if (tf && tf.to === myName && tf.status === 'pending') {
+                document.getElementById('request-text-info').innerText = `📬 ${tf.from} wants to give you a card.`;
+                requestBox.style.display = 'flex';
+            } else {
+                requestBox.style.display = 'none';
+            }
+
+            if (tf && tf.from === myName && tf.status === 'rejected') {
+                alert(`❌ Transfer Rejected! Card returned to your hand.`);
+                let me = roomState.players.find(p => p.name === myName);
+                me.hand.push(tf.card);
+                sortPlayerHand(me.hand); // Auto-sort high to low on bounce-back
+                roomState.active_transfer = {};
+                pushState();
+                return;
+            }
+
             const tableElem = document.getElementById('table-cards'); tableElem.innerHTML = '';
             const targetThullaIdx = getThullaTargetIndex();
             
-            roomState.table_cards.forEach((item, index) => {
-                let cardDiv = document.createElement('div');
-                cardDiv.className = `card ${item.card.suit.red ? 'red' : ''}`;
-                let badge = (index === targetThullaIdx) ? `<div class="thulla-badge">🚨 THULLA TARGET</div>` : '';
-                cardDiv.innerHTML = `${badge}<div>${item.card.value} ${item.card.suit.sign}</div><div class="suit-bottom">${item.card.value} ${item.card.suit.sign}</div><div class="card-owner-tag">${item.owner}</div>`;
-                tableElem.appendChild(cardDiv);
-            });
+            if (roomState.table_cards) {
+                roomState.table_cards.forEach((item, index) => {
+                    let cardDiv = document.createElement('div');
+                    cardDiv.className = `card ${item.card.suit.red ? 'red' : ''}`;
+                    let badge = (index === targetThullaIdx) ? `<div class="thulla-badge">🚨 THULLA TARGET</div>` : '';
+                    cardDiv.innerHTML = `${badge}<div>${item.card.value} ${item.card.suit.sign}</div><div class="suit-bottom">${item.card.value} ${item.card.suit.sign}</div><div class="card-owner-tag">${item.owner}</div>`;
+                    tableElem.appendChild(cardDiv);
+                });
+            }
 
             const me = roomState.players.find(p => p.name === myName);
             const handElem = document.getElementById('hand-cards'); handElem.innerHTML = '';
-            if(me) {
+            if(me && me.hand) {
                 me.hand.forEach((card, idx) => {
                     let cardDiv = document.createElement('div');
                     cardDiv.className = `card ${card.suit.red ? 'red' : ''}`;
@@ -397,10 +455,11 @@
                 });
             }
             
-            document.getElementById('pick-all-btn').innerText = roomState.table_cards.length ? `📥 Pick All (${roomState.table_cards.length} Cards)` : "📥 Table is Empty";
+            const currentTableCount = roomState.table_cards ? roomState.table_cards.length : 0;
+            document.getElementById('pick-all-btn').innerText = currentTableCount ? `📥 Pick All (${currentTableCount} Cards)` : "📥 Table is Empty";
         }
 
-        // Step 4: Game Actions
+        // Step 3: Game Action Managers
         function dealCards() {
             let deck = [];
             SUITS.forEach(s => Object.keys(RANK_MAP).forEach(v => deck.push({ value: v, suit: s })));
@@ -414,8 +473,10 @@
                 roomState.players[pIdx % numPlayers].hand.push(deck.pop());
                 pIdx++;
             }
-            roomState.players.forEach(p => p.hand.sort((a,b) => a.suit.name.localeCompare(b.suit.name)));
+            // FIXED: Applied descending sorting directly to initial distribution
+            roomState.players.forEach(p => sortPlayerHand(p.hand));
             roomState.table_cards = [];
+            roomState.active_transfer = {};
             pushState();
         }
 
@@ -423,35 +484,87 @@
             if(selectedCardIndex === null) return;
             let me = roomState.players.find(p => p.name === myName);
             let card = me.hand.splice(selectedCardIndex, 1)[0];
+            if (!roomState.table_cards) roomState.table_cards = [];
             roomState.table_cards.push({ card: card, owner: myName });
             selectedCardIndex = null;
             pushState();
         }
 
         function pickAllCards() {
-            if(!roomState.table_cards.length) return;
+            if(!roomState.table_cards || !roomState.table_cards.length) return;
             let me = roomState.players.find(p => p.name === myName);
             while(roomState.table_cards.length > 0) {
                 me.hand.push(roomState.table_cards.shift().card);
             }
-            me.hand.sort((a,b) => a.suit.name.localeCompare(b.suit.name));
+            sortPlayerHand(me.hand); // FIXED: Auto-sort high to low on table scoop
             pushState();
         }
 
         function giftCard() {
-            if(selectedCardIndex === null) return;
+            if(selectedCardIndex === null) {
+                alert("Please select a card from your hand to transfer first.");
+                return;
+            }
+            const tf = roomState.active_transfer;
+            if(tf && tf.status === 'pending') {
+                alert("Another transfer is currently being processed. Please wait.");
+                return;
+            }
+
             let targetName = document.getElementById('gift-select').value;
             let me = roomState.players.find(p => p.name === myName);
-            let target = roomState.players.find(p => p.name === targetName);
+            let stagedCard = me.hand.splice(selectedCardIndex, 1)[0];
             
-            target.hand.push(me.hand.splice(selectedCardIndex, 1)[0]);
+            roomState.active_transfer = {
+                from: myName,
+                to: targetName,
+                card: stagedCard,
+                status: 'pending'
+            };
+            
             selectedCardIndex = null;
+            pushState();
+            alert(`Sent transfer request to ${targetName}. Waiting for them...`);
+        }
+
+        async function respondToTransfer(isAccepted) {
+            const tf = roomState.active_transfer;
+            if (!tf) return;
+
+            if (isAccepted) {
+                let me = roomState.players.find(p => p.name === myName);
+                me.hand.push(tf.card);
+                sortPlayerHand(me.hand); // FIXED: Auto-sort high to low on incoming donation accept
+                roomState.active_transfer = {}; 
+                alert("Card accepted and added to your hand!");
+            } else {
+                roomState.active_transfer.status = 'rejected';
+            }
             pushState();
         }
 
-        function clearToPile() { roomState.table_cards = []; pushState(); }
+        function clearToPile() { 
+            if(!roomState.table_cards || !roomState.table_cards.length) return;
+            
+            if(confirm("⚠️ WARNING: Are you sure you want to drop all cards into a closed pile? They will be permanently removed from this round!")) {
+                roomState.table_cards = []; 
+                pushState(); 
+            }
+        }
+
         function setName() { myName = document.getElementById('username').value.trim(); if(!myName) alert("Enter your name first!"); }
         function leaveRoom() { if(channel) channel.unsubscribe(); location.reload(); }
+    // NEW FEATURE: Prevent accidental browser refresh or tab closing mid-game
+    window.addEventListener('beforeunload', (event) => {
+            // Only trigger warning if the player has entered an active game room
+            if (roomCode && myName) {
+                // Cancel the event as stated by the standard HTML specification
+                event.preventDefault();
+                // Chrome requires returnValue to be set explicitly
+                event.returnValue = "Are you sure you want to leave the active match? Your cards will be disconnected.";
+            }
+        });
+    
     </script>
 </body>
 </html>
