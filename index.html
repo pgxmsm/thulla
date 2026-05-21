@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online Thulla Card Table</title>
+    <!-- Include Supabase Realtime Client Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root {
+            --bg-color: #1a472a;
+            --table-color: #2e7d32;
+            --card-bg: #ffffff;
+            --text-dark: #333333;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: white;
+            margin: 0;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+        }
+        h2 { margin: 5px 0; font-weight: 400; text-shadow: 1px 1px 3px black; }
+        
+        /* Lobby Panels */
+        #lobby-container {
+            background: rgba(0,0,0,0.7);
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            margin-top: 40px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            max-width: 400px;
+            width: 90%;
+        }
+        .lobby-box {
+            border: 1px solid rgba(255,255,255,0.2);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            background: rgba(255,255,255,0.05);
+        }
+        input, select, button {
+            padding: 10px;
+            margin: 5px;
+            border-radius: 5px;
+            border: none;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #ff9800;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover { background-color: #e68a00; }
+        
+        #game-container { display: none; width: 100%; max-width: 1000px; }
+        .control-bar {
+            display: flex;
+            justify-content: space-between;
+            background: rgba(0,0,0,0.4);
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            align-items: center;
+        }
+        
+        /* Table Layout */
+        .table-surface {
+            background-color: var(--table-color);
+            border: 8px solid #5d4037;
+            border-radius: 50px;
+            min-height: 240px;
+            position: relative;
+            margin-bottom: 20px;
+            box-shadow: inset 0 0 20px rgba(0,0,0,0.6);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        #table-cards {
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            flex-wrap: wrap;
+        }
+        .table-actions {
+            position: absolute;
+            bottom: 10px;
+            right: 20px;
+        }
+
+        /* Player Interface Area */
+        .player-hub {
+            background: rgba(255,255,255,0.1);
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .connected-list {
+            font-size: 14px;
+            color: #b0bec5;
+            margin-bottom: 10px;
+            background: rgba(0,0,0,0.2);
+            padding: 8px;
+            border-radius: 5px;
+        }
+        .hand-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .hand-display {
+            background: rgba(0,0,0,0.3);
+            min-height: 130px;
+            border-radius: 8px;
+            padding: 10px;
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            align-items: center;
+        }
+
+        /* Card Styling */
+        .card {
+            width: 72px;
+            height: 108px;
+            background: var(--card-bg);
+            border-radius: 6px;
+            color: var(--text-dark);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 6px;
+            box-sizing: border-box;
+            font-weight: bold;
+            font-size: 18px;
+            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+            cursor: pointer;
+            user-select: none;
+            position: relative;
+            flex-shrink: 0;
+        }
+        .card.red { color: #d32f2f; }
+        .card .suit-bottom { align-self: flex-end; transform: rotate(180deg); }
+        
+        .card-owner-tag {
+            position: absolute;
+            bottom: -18px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0,0,0,0.8);
+            color: white;
+            font-size: 10px;
+            padding: 2px 5px;
+            border-radius: 3px;
+            white-space: nowrap;
+        }
+        .thulla-badge {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #e53935;
+            color: white;
+            font-size: 9px;
+            font-weight: 900;
+            padding: 2px 6px;
+            border-radius: 10px;
+            border: 1px solid white;
+            white-space: nowrap;
+            animation: pulse 1.5s infinite linear;
+        }
+        @keyframes pulse {
+            0% { transform: translateX(-50%) scale(1); }
+            50% { transform: translateX(-50%) scale(1.05); }
+            100% { transform: translateX(-50%) scale(1); }
+        }
+        .action-row {
+            margin-top: 15px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            align-items: center;
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- SECTION 1: Online Registration Lobby -->
+    <div id="lobby-container">
+        <h2>♠️ Online Thulla Table ♥️</h2>
+        <input type="text" id="username" placeholder="Your Name" style="width:100%">
+        <hr style="opacity:0.2; margin:15px 0;">
+        
+        <div class="lobby-box">
+            <h3>Host a New Table</h3>
+            <button onclick="createRoom()" style="background:#4caf50; width:100%">Generate Table Code</button>
+        </div>
+
+        <div class="lobby-box">
+            <h3>Join Existing Table</h3>
+            <input type="text" id="room-input" placeholder="Enter Room Code" style="width:100%; text-transform:uppercase;">
+            <button onclick="joinRoom()" style="background:#2196f3; width:100%; margin-top:8px;">Connect to Table</button>
+        </div>
+    </div>
+
+    <!-- SECTION 2: Live Sync Game Table -->
+    <div id="game-container">
+        <div class="control-bar">
+            <div>Room: <b id="display-room-code" style="color:#ff9800;">-</b></div>
+            <button id="deal-btn" onclick="dealCards()" style="background:#ff9800; display:none;">Shuffle & Deal 52 Cards</button>
+            <button onclick="leaveRoom()" style="background:#f44336;">Leave</button>
+        </div>
+
+        <div class="connected-list" id="active-players-summary">Waiting for players...</div>
+
+        <!-- The Shared Multi-device surface -->
+        <div class="table-surface">
+            <div id="table-cards"></div>
+            <div class="table-actions">
+                <button onclick="clearToPile()" style="background:#795548; font-size:12px;">Make a Pile (Burn)</button>
+            </div>
+        </div>
+
+        <!-- Player Interface Panel -->
+        <div class="player-hub">
+            <div class="hand-header-row">
+                <h3 style="margin:0;">Your Private Hand (<span id="my-name-display"></span>)</h3>
+                <button id="pick-all-btn" onclick="pickAllCards()" style="background:#e91e63; margin:0; padding:6px 12px; font-size:14px;">📥 Pick All Cards (Thulla)</button>
+            </div>
+            
+            <div class="hand-display" id="hand-cards"></div>
+
+            <div class="action-row">
+                <button onclick="throwSelected()" style="background:#4caf50;">Throw Selected Card</button>
+                <span style="margin: 0 10px; border-left: 1px solid #fff; height: 25px;"></span>
+                <label for="gift-select">Give Card To:</label>
+                <select id="gift-select"></select>
+                <button onclick="giftCard()" style="background:#009688;">Transfer</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // CONFIGURATION: Connected directly to your project references
+        const SUPABASE_URL = 'https://qjzwpalnhrctuvwcirat.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_StitNiAsAN8fe9FbM4pzRw_Dw68bC69';
+        
+        // FIXED LINE: Avoided naming collision crash
+        const dbClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        const RANK_MAP = {'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14};
+        const SUITS = [
+            { sign: '♠', name: 'Spades', red: false },
+            { sign: '♥', name: 'Hearts', red: true },
+            { sign: '♦', name: 'Diamonds', red: true },
+            { sign: '♣', name: 'Clubs', red: false }
+        ];
+
+        let roomCode = '';
+        let myName = '';
+        let roomState = { players: [], table_cards: [] };
+        let selectedCardIndex = null;
+        let channel = null;
+
+        // Step 1: Database Operations & Sync Connection
+        async function createRoom() {
+            setName(); if(!myName) return;
+            roomCode = Math.random().toString(36).substring(2,7).toUpperCase();
+            
+            const { error } = await dbClient.from('card_rooms').insert([{ 
+                room_code: roomCode, 
+                players: [{ name: myName, hand: [] }], 
+                table_cards: [] 
+            }]);
+
+            if(error) { alert("Initialization failure."); return; }
+            startRoomSubscription();
+        }
+
+        async function joinRoom() {
+            setName(); if(!myName) return;
+            roomCode = document.getElementById('room-input').value.trim().toUpperCase();
+            
+            const { data, error } = await dbClient.from('card_rooms').select('*').eq('room_code', roomCode).single();
+            if(!data || error) { alert("Room code not found!"); return; }
+
+            let currentPlayers = data.players;
+            if(!currentPlayers.find(p => p.name === myName)) {
+                currentPlayers.push({ name: myName, hand: [] });
+                await dbClient.from('card_rooms').update({ players: currentPlayers }).eq('room_code', roomCode);
+            }
+            startRoomSubscription();
+        }
+
+        function startRoomSubscription() {
+            document.getElementById('lobby-container').style.display = 'none';
+            document.getElementById('game-container').style.display = 'block';
+            document.getElementById('display-room-code').innerText = roomCode;
+            document.getElementById('my-name-display').innerText = myName;
+
+            fetchCurrentState();
+
+            // Establish real-time web socket pipeline
+            channel = dbClient.channel(`room:${roomCode}`)
+            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'card_rooms', filter: `room_code=eq.${roomCode}` }, 
+                payload => {
+                    roomState = payload.new;
+                    renderUI();
+                }
+            )
+            .subscribe();
+        }
+
+        async function fetchCurrentState() {
+            const { data } = await dbClient.from('card_rooms').select('*').eq('room_code', roomCode).single();
+            if(data) { roomState = data; renderUI(); }
+        }
+
+        async function pushState() {
+            await dbClient.from('card_rooms').update({ 
+                players: roomState.players, 
+                table_cards: roomState.table_cards,
+                updated_at: new Date()
+            }).eq('room_code', roomCode);
+        }
+
+        // Step 2: The Core Thulla Logic Evaluator
+        function getThullaTargetIndex() {
+            const cards = roomState.table_cards;
+            if (cards.length < 2) return null;
+            const leadSuit = cards[0].card.suit.name;
+            let broken = cards.some(c => c.card.suit.name !== leadSuit);
+            if (!broken) return null;
+
+            let highVal = -1, targetIdx = -1;
+            cards.forEach((item, idx) => {
+                if(item.card.suit.name === leadSuit) {
+                    let v = RANK_MAP[item.card.value];
+                    if(v > highVal) { highVal = v; targetIdx = idx; }
+                }
+            });
+            return targetIdx;
+        }
+
+        // Step 3: UI Painters
+        function renderUI() {
+            const summary = document.getElementById('active-players-summary');
+            summary.innerText = "Players: " + roomState.players.map(p => `${p.name} (${p.hand.length} cards)`).join(' | ');
+
+            document.getElementById('deal-btn').style.display = (roomState.players[0]?.name === myName) ? 'block' : 'none';
+
+            const select = document.getElementById('gift-select'); select.innerHTML = '';
+            roomState.players.forEach(p => {
+                if(p.name !== myName) {
+                    let opt = document.createElement('option'); opt.value = p.name; opt.innerText = p.name;
+                    select.appendChild(opt);
+                }
+            });
+
+            const tableElem = document.getElementById('table-cards'); tableElem.innerHTML = '';
+            const targetThullaIdx = getThullaTargetIndex();
+            
+            roomState.table_cards.forEach((item, index) => {
+                let cardDiv = document.createElement('div');
+                cardDiv.className = `card ${item.card.suit.red ? 'red' : ''}`;
+                let badge = (index === targetThullaIdx) ? `<div class="thulla-badge">🚨 THULLA TARGET</div>` : '';
+                cardDiv.innerHTML = `${badge}<div>${item.card.value} ${item.card.suit.sign}</div><div class="suit-bottom">${item.card.value} ${item.card.suit.sign}</div><div class="card-owner-tag">${item.owner}</div>`;
+                tableElem.appendChild(cardDiv);
+            });
+
+            const me = roomState.players.find(p => p.name === myName);
+            const handElem = document.getElementById('hand-cards'); handElem.innerHTML = '';
+            if(me) {
+                me.hand.forEach((card, idx) => {
+                    let cardDiv = document.createElement('div');
+                    cardDiv.className = `card ${card.suit.red ? 'red' : ''}`;
+                    if(idx === selectedCardIndex) cardDiv.style.border = "3px solid #ff9800";
+                    cardDiv.innerHTML = `<div>${card.value} ${card.suit.sign}</div><div class="suit-bottom">${card.value} ${card.suit.sign}</div>`;
+                    cardDiv.onclick = () => { selectedCardIndex = (selectedCardIndex === idx) ? null : idx; renderUI(); };
+                    handElem.appendChild(cardDiv);
+                });
+            }
+            
+            document.getElementById('pick-all-btn').innerText = roomState.table_cards.length ? `📥 Pick All (${roomState.table_cards.length} Cards)` : "📥 Table is Empty";
+        }
+
+        // Step 4: Game Actions
+        function dealCards() {
+            let deck = [];
+            SUITS.forEach(s => Object.keys(RANK_MAP).forEach(v => deck.push({ value: v, suit: s })));
+            for (let i = deck.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [deck[i], deck[j]] = [deck[j], deck[i]]; }
+
+            let numPlayers = roomState.players.length;
+            roomState.players.forEach(p => p.hand = []);
+            
+            let pIdx = 0;
+            while(deck.length > 0) {
+                roomState.players[pIdx % numPlayers].hand.push(deck.pop());
+                pIdx++;
+            }
+            roomState.players.forEach(p => p.hand.sort((a,b) => a.suit.name.localeCompare(b.suit.name)));
+            roomState.table_cards = [];
+            pushState();
+        }
+
+        function throwSelected() {
+            if(selectedCardIndex === null) return;
+            let me = roomState.players.find(p => p.name === myName);
+            let card = me.hand.splice(selectedCardIndex, 1)[0];
+            roomState.table_cards.push({ card: card, owner: myName });
+            selectedCardIndex = null;
+            pushState();
+        }
+
+        function pickAllCards() {
+            if(!roomState.table_cards.length) return;
+            let me = roomState.players.find(p => p.name === myName);
+            while(roomState.table_cards.length > 0) {
+                me.hand.push(roomState.table_cards.shift().card);
+            }
+            me.hand.sort((a,b) => a.suit.name.localeCompare(b.suit.name));
+            pushState();
+        }
+
+        function giftCard() {
+            if(selectedCardIndex === null) return;
+            let targetName = document.getElementById('gift-select').value;
+            let me = roomState.players.find(p => p.name === myName);
+            let target = roomState.players.find(p => p.name === targetName);
+            
+            target.hand.push(me.hand.splice(selectedCardIndex, 1)[0]);
+            selectedCardIndex = null;
+            pushState();
+        }
+
+        function clearToPile() { roomState.table_cards = []; pushState(); }
+        function setName() { myName = document.getElementById('username').value.trim(); if(!myName) alert("Enter your name first!"); }
+        function leaveRoom() { if(channel) channel.unsubscribe(); location.reload(); }
+    </script>
+</body>
+</html>
