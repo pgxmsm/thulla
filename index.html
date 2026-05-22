@@ -380,7 +380,6 @@
             <div>ROOM: <b id="display-room-code" style="color:var(--text-gold); font-size:13px; letter-spacing:0.5px;">-</b></div>
             
             <div class="header-right-group">
-                <!-- NEW: Manual Reconnect Utility Trigger Button -->
                 <button id="reconnect-btn" onclick="manualReconnect()" class="btn-info" style="padding: 6px 10px; font-size: 11px;">🔄 Reconnect</button>
                 <button id="deal-btn" onclick="dealCards()" class="btn-primary" style="display:none;">Deal Cards</button>
                 <button class="btn-danger" onclick="leaveRoom()">Leave</button>
@@ -502,32 +501,26 @@
             
             fetchCurrentState();
 
-            // Establish fresh real-time web-socket link channel structures
             channel = dbClient.channel(`room:${roomCode}`)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'card_rooms', filter: `room_code=eq.${roomCode}` }, 
                 payload => { roomState = payload.new; renderUI(); }
             ).subscribe();
         }
 
-        // NEW MANUAL RECONNECT FLOW: Safely rebuilds the channel listener matrix without data resets
         async function manualReconnect() {
             const btn = document.getElementById('reconnect-btn');
             btn.innerText = "Connecting...";
             btn.style.opacity = "0.6";
 
             try {
-                // 1. Unsubscribe cleanly from old stalled channel socket instances
                 if (channel) {
                     await channel.unsubscribe();
                 }
-                
-                // 2. Refresh snapshot data natively from the cloud table row storage
                 const { data, error } = await dbClient.from('card_rooms').select('*').eq('room_code', roomCode).single();
                 if (error || !data) throw error;
                 
                 roomState = data;
                 
-                // 3. Re-initialize pipeline subscription channel
                 channel = dbClient.channel(`room:${roomCode}`)
                 .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'card_rooms', filter: `room_code=eq.${roomCode}` }, 
                     payload => { roomState = payload.new; renderUI(); }
@@ -541,7 +534,7 @@
                 console.error("Manual Reconnection Drop:", err);
                 btn.innerText = "❌ Retry";
                 btn.style.opacity = "1";
-                alert("⚠️ Reconnection failed. Check your data or cellular reception status.");
+                alert("⚠️ Reconnection failed. Check your network reception status.");
             }
         }
 
@@ -709,24 +702,26 @@
                 tableCenterAlert.style.display = "block";
                 tableCenterAlert.classList.add('passive-turn-style');
                 
-                if (isItMyLogicalTurn && !hasUserThrownThisRound()) {
+                if (targetThullaIdx !== null) {
+                    // Thulla is active! Modify message to warn about rule breaking
+                    const currentTargetName = roomState.table_cards[targetThullaIdx].owner;
+                    tableCenterAlert.innerText = `🚨 THULLA ACTIVE ON ${currentTargetName.toUpperCase()}! DO NOT PLAY!`;
+                } else if (isItMyLogicalTurn && !hasUserThrownThisRound()) {
                     tableCenterAlert.innerText = "⚡ Your turn to reply to the trick!";
                     handTitleText.style.color = "var(--text-gold)";
                     handTitleText.innerHTML = `Your Hand (${myName}) <span id="my-turn-display" class="my-turn-highlight-text">[YOUR TURN TO REPLY]</span>`;
-                    
-                    throwBtn.style.opacity = "1";
-                    throwBtn.style.cursor = "pointer";
                 } else {
                     tableCenterAlert.innerText = `⏳ Turn order path: Waiting for ${logicalTurnPlayerName}...`;
                     handTitleText.style.color = "white";
-                    
-                    throwBtn.style.opacity = "0.4";
-                    throwBtn.style.cursor = "not-allowed";
                 }
 
+                // If Thulla is on table, keep throw active so people can get caught breaking the rule!
                 if (hasUserThrownThisRound()) {
                     throwBtn.style.opacity = "0.4";
                     throwBtn.style.cursor = "not-allowed";
+                } else {
+                    throwBtn.style.opacity = "1";
+                    throwBtn.style.cursor = "pointer";
                 }
             }
 
@@ -813,23 +808,51 @@
             pushState();
         }
 
+        // UPDATED: Added a strict Rule Enforcement catch for out-of-order plays during active Thulla penalties
         function throwSelected() {
             if(selectedCardIndex === null) return;
             
             const isTableEmpty = (!roomState.table_cards || roomState.table_cards.length === 0);
             const amIFirstThrower = (roomState.first_thrower === myName);
             const logicalTurnPlayerName = getLogicalNextTurnPlayerName();
+            const targetThullaIdx = getThullaTargetIndex();
 
             if (isTableEmpty && !amIFirstThrower) {
                 alert(` Wait for ${roomState.first_thrower} to play lead.`); return;
             }
 
-            if (!isTableEmpty && logicalTurnPlayerName !== myName) {
-                alert(`⛔ Turn Restriction: It is currently ${logicalTurnPlayerName}'s turn! Please wait your turn.`);
+            if (hasUserThrownThisRound()) { alert("⛔ You already threw a card!"); return; }
+
+            // NEW CRITICAL ENFORCEMENT: Detect if a Thulla is active and someone else tries to keep playing
+            if (!isTableEmpty && targetThullaIdx !== null) {
+                const genuineTargetName = roomState.table_cards[targetThullaIdx].owner;
+                
+                alert(`💥 PENALTY FOUL! A Thulla was already imposed on ${genuineTargetName.toUpperCase()}! Because you broke the rule and played anyway, you receive all cards as a penalty!`);
+                
+                // Extract rule-breaker's card selection first
+                let me = roomState.players.find(p => p.name === myName);
+                let illegallyPlayedCard = me.hand.splice(selectedCardIndex, 1)[0];
+                
+                // Add their own card and ALL cards currently sitting on the table directly into the rule breaker's private hand
+                me.hand.push(illegallyPlayedCard);
+                while(roomState.table_cards.length > 0) {
+                    me.hand.push(roomState.table_cards.shift().card);
+                }
+                
+                sortPlayerHand(me.hand);
+                selectedCardIndex = null;
+                
+                // Force the rule-breaker to lead the next trick round
+                roomState.first_thrower = myName;
+                pushState();
                 return;
             }
 
-            if (hasUserThrownThisRound()) { alert("⛔ You already threw a card!"); return; }
+            // Standard Turn Order Verification Lock
+            if (!isTableEmpty && logicalTurnPlayerName !== myName) {
+                alert(`(oops) Turn Restriction: It is currently ${logicalTurnPlayerName}'s turn! Please wait your turn.`);
+                return;
+            }
 
             let me = roomState.players.find(p => p.name === myName);
             let card = me.hand.splice(selectedCardIndex, 1)[0];
