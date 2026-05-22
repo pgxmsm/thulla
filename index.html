@@ -183,13 +183,13 @@
             text-align: center;
             margin-bottom: 15px;
             text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-            animation: pulseBanner 2s infinite ease-in-out;
         }
 
-        @keyframes pulseBanner {
-            0% { transform: scale(1); opacity: 0.9; }
-            50% { transform: scale(1.02); opacity: 1; box-shadow: 0 0 15px rgba(255,215,0,0.3); }
-            100% { transform: scale(1); opacity: 0.9; }
+        /* Dynamic Alternative Layout Style for passive turn indicators */
+        .passive-turn-style {
+            background: rgba(255, 255, 255, 0.08) !important;
+            border: 2px dashed rgba(255, 255, 255, 0.2) !important;
+            color: #e0e0e0 !important;
         }
 
         .table-actions {
@@ -263,13 +263,6 @@
             border: 1px solid white;
             white-space: nowrap;
             box-shadow: 0 4px 8px rgba(0,0,0,0.4);
-            animation: pulse 1.5s infinite linear;
-        }
-
-        @keyframes pulse {
-            0% { transform: translateX(-50%) scale(1); }
-            50% { transform: translateX(-50%) scale(1.06); }
-            100% { transform: translateX(-50%) scale(1); }
         }
 
         /* Player Interface Hud */
@@ -317,21 +310,6 @@
             font-size: 13px;
         }
         #recall-vote-box { background: linear-gradient(90deg, #37474f, #212121); }
-
-        #turn-status-banner {
-            display: none;
-            width: 100%;
-            background: linear-gradient(90deg, #2e7d32, #1b5e20);
-            color: white;
-            text-align: center;
-            padding: 6px;
-            font-weight: 700;
-            border-radius: 6px;
-            margin-bottom: 10px;
-            font-size: 13px;
-            border: 1px solid #4caf50;
-            box-shadow: 0 4px 10px rgba(76,175,80,0.2);
-        }
 
         .action-row {
             display: flex;
@@ -387,7 +365,6 @@
             <input type="text" id="room-input" placeholder="ROOM CODE" style="text-transform:uppercase;">
             <button class="btn-primary" onclick="joinRoom()" style="width:100%; margin-top:10px;">CONNECT TABLE</button>
         </div>
-        <h5>By <a href="https://pgxmsm.github.io/me ">pgxMSM</a></h5>
     </div>
 
     <!-- SECTION 2: Table Interface -->
@@ -401,7 +378,6 @@
         </div>
 
         <div class="connected-list" id="active-players-summary">Awaiting connection...</div>
-        <div id="turn-status-banner">YOUR ROUND LEAD TURN (FIRST THROW)</div>
 
         <!-- Alert Notification Popups -->
         <div id="incoming-request-box">
@@ -568,6 +544,25 @@
             return roomState.table_cards.some(item => item.owner === myName);
         }
 
+        // Helper calculation logic to find out whose round loop turn it is next
+        function getLogicalNextTurnPlayerName() {
+            if (!roomState.table_cards || roomState.table_cards.length === 0) {
+                return roomState.first_thrower;
+            }
+            
+            // Look up who played the very last card thrown onto the grid
+            const lastCardOwner = roomState.table_cards[roomState.table_cards.length - 1].owner;
+            const currentOwnerProfile = roomState.players.find(p => p.name === lastCardOwner);
+            if (!currentOwnerProfile || !currentOwnerProfile.turn_num) return '';
+
+            // Find who holds the next sequential number loop assignment position
+            const totalCount = roomState.players.length;
+            let targetNextTurnNum = (currentOwnerProfile.turn_num % totalCount) + 1;
+
+            const nextPlayerObj = roomState.players.find(p => p.turn_num === targetNextTurnNum);
+            return nextPlayerObj ? nextPlayerObj.name : '';
+        }
+
         function renderUI() {
             const summary = document.getElementById('active-players-summary');
             const sortedPlayersByTurn = [...roomState.players].sort((a,b) => (a.turn_num || 99) - (b.turn_num || 99));
@@ -631,23 +626,50 @@
             const throwBtn = document.getElementById('throw-btn');
             const isTableEmpty = (!roomState.table_cards || roomState.table_cards.length === 0);
             const amIFirstThrower = (roomState.first_thrower === myName);
-            const turnStatusBanner = document.getElementById('turn-status-banner');
             const tableCenterAlert = document.getElementById('table-center-turn-alert');
             const handTitleText = document.getElementById('hand-title-text');
 
-            if (isTableEmpty && amIFirstThrower) {
-                turnStatusBanner.style.display = "block";
-                tableCenterAlert.style.display = "block";
-                handTitleText.style.color = "var(--text-gold)";
-                handTitleText.innerHTML = `Your Hand (${myName}) <span id="my-turn-display" class="my-turn-highlight-text">[IT'S YOUR TURN]</span>`;
-                throwBtn.style.opacity = "1";
-                throwBtn.style.cursor = "pointer";
+            // NEW STATE LOGIC PATHWAY: Track logical current sequential turns cleanly
+            const logicalTurnPlayerName = getLogicalNextTurnPlayerName();
+            const isItMyLogicalTurn = (logicalTurnPlayerName === myName);
+
+            if (isTableEmpty) {
+                // Table is completely empty -> Strict enforcement locks for 1st thrower remain active
+                if (amIFirstThrower) {
+                    tableCenterAlert.style.display = "block";
+                    tableCenterAlert.classList.remove('passive-turn-style');
+                    tableCenterAlert.innerText = "👉 THROW CARD, IT'S YOUR TURN!";
+                    
+                    handTitleText.style.color = "var(--text-gold)";
+                    handTitleText.innerHTML = `Your Hand (${myName}) <span id="my-turn-display" class="my-turn-highlight-text">[IT'S YOUR TURN]</span>`;
+                    
+                    throwBtn.style.opacity = "1";
+                    throwBtn.style.cursor = "pointer";
+                } else {
+                    tableCenterAlert.style.display = "block";
+                    tableCenterAlert.classList.add('passive-turn-style');
+                    tableCenterAlert.innerText = `⏳ Waiting for ${roomState.first_thrower} to lead...`;
+                    
+                    handTitleText.style.color = "white";
+                    throwBtn.style.opacity = "0.4";
+                    throwBtn.style.cursor = "not-allowed";
+                }
             } else {
-                turnStatusBanner.style.display = "none";
-                tableCenterAlert.style.display = "none";
-                handTitleText.style.color = "white";
+                // MODIFIED BEHAVIOR: The table has cards down. Guide players with prompts but do NOT block clicks!
+                tableCenterAlert.style.display = "block";
+                tableCenterAlert.classList.add('passive-turn-style');
                 
-                if (hasUserThrownThisRound() || (isTableEmpty && !amIFirstThrower)) {
+                if (isItMyLogicalTurn && !hasUserThrownThisRound()) {
+                    tableCenterAlert.innerText = "⚡ Your turn to reply to the trick!";
+                    handTitleText.style.color = "var(--text-gold)";
+                    handTitleText.innerHTML = `Your Hand (${myName}) <span id="my-turn-display" class="my-turn-highlight-text">[YOUR TURN TO REPLY]</span>`;
+                } else {
+                    tableCenterAlert.innerText = `⏳ Turn order path: Waiting for ${logicalTurnPlayerName}...`;
+                    handTitleText.style.color = "white";
+                }
+
+                // Rule Enforcement Override: Check single card throw limit per round layout structure
+                if (hasUserThrownThisRound()) {
                     throwBtn.style.opacity = "0.4";
                     throwBtn.style.cursor = "not-allowed";
                 } else {
@@ -670,7 +692,10 @@
             const handElem = document.getElementById('hand-cards'); handElem.innerHTML = '';
             
             if(me) {
-                if (!(isTableEmpty && amIFirstThrower)) {
+                // Ensure standard turn label calculations render perfectly on non-active loops
+                if (isTableEmpty && !amIFirstThrower) {
+                    document.getElementById('my-turn-display').innerText = me.turn_num ? `[Turn ${me.turn_num}]` : '';
+                } else if (!isTableEmpty && !isItMyLogicalTurn) {
                     document.getElementById('my-turn-display').innerText = me.turn_num ? `[Turn ${me.turn_num}]` : '';
                 }
                 
@@ -686,7 +711,6 @@
                 }
             }
 
-            // NEW CORE RULE IMPLEMENTATION: Dynamically set button properties based on suit family coherence
             const currentTableCount = roomState.table_cards ? roomState.table_cards.length : 0;
             const pickAllBtn = document.getElementById('pick-all-btn');
             
@@ -695,12 +719,10 @@
                 pickAllBtn.style.cursor = "not-allowed";
                 pickAllBtn.innerText = "Take All";
             } else if (targetThullaIdx === null) {
-                // All cards are from the SAME family -> Lock the option because no Thulla is breaking the game rules
                 pickAllBtn.style.opacity = "0.4";
                 pickAllBtn.style.cursor = "not-allowed";
                 pickAllBtn.innerText = "Same Suit Lock";
             } else {
-                // Different suit families detected -> Thulla is active! Allow pickup
                 pickAllBtn.style.opacity = "1";
                 pickAllBtn.style.cursor = "pointer";
                 pickAllBtn.innerText = `Take All (${currentTableCount})`;
@@ -743,7 +765,7 @@
         function throwSelected() {
             if(selectedCardIndex === null) return;
             if ((!roomState.table_cards || roomState.table_cards.length === 0) && roomState.first_thrower !== myName) {
-                alert(`⛔ Wait for ${roomState.first_thrower} to play lead.`); return;
+                alert(`... Wait for ${roomState.first_thrower} to play lead.`); return;
             }
             if (hasUserThrownThisRound()) { alert("⛔ You already threw a card!"); return; }
 
@@ -760,7 +782,6 @@
             
             const targetThullaIdx = getThullaTargetIndex();
             
-            // NEW VERIFICATION STAGE: Hard check if cards belong to the same family
             if (targetThullaIdx === null) {
                 alert("⛔ Rule Enforcement: You cannot take cards back if everyone played the same family! Use 'Burn Pile' instead.");
                 return;
@@ -834,6 +855,7 @@
             }
         }
 
+        document.getElementById('username').value = "";
         function setName() { myName = document.getElementById('username').value.trim(); }
         function leaveRoom() { if(channel) channel.unsubscribe(); location.reload(); }
         window.addEventListener('beforeunload', (e) => { if(roomCode&&myName){ e.preventDefault(); e.returnValue = ""; } });
