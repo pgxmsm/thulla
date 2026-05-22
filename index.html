@@ -2,90 +2,165 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Online Thulla Card Table</title>
-    <!-- Include Supabase Realtime Client Library -->
+    <!-- Google Fonts & Supabase Connection Dependency -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         :root {
-            --bg-color: #1a472a;
-            --table-color: #2e7d32;
-            --card-bg: #ffffff;
-            --text-dark: #333333;
+            --felt-gradient: radial-gradient(circle, #1e5631 0%, #11361c 100%);
+            --panel-bg: rgba(18, 38, 25, 0.75);
+            --card-white: #ffffff;
+            --text-gold: #ffd700;
+            --action-orange: #ff9800;
+            --danger-red: #ef5350;
+            --success-green: #4caf50;
+            --glass-border: 1px solid rgba(255, 255, 255, 0.12);
         }
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background-color: var(--bg-color);
-            color: white;
+
+        * {
+            box-sizing: border-box;
+            font-family: 'Poppins', sans-serif;
             margin: 0;
-            padding: 10px;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f2015 0%, #050a06 100%);
+            color: #ffffff;
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
-            min-height: 100vh;
+            padding: 8px;
+            overflow-x: hidden;
         }
-        h2 { margin: 5px 0; font-weight: 400; text-shadow: 1px 1px 3px black; }
-        
-        /* Lobby Panels */
+
+        /* Lobby Screens Modern Look */
         #lobby-container {
-            background: rgba(0,0,0,0.7);
+            background: var(--panel-bg);
+            border: var(--glass-border);
+            backdrop-filter: blur(16px);
             padding: 25px;
-            border-radius: 12px;
+            border-radius: 20px;
             text-align: center;
             margin-top: 40px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            max-width: 400px;
-            width: 90%;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.6);
+            max-width: 420px;
+            width: 100%;
         }
+
+        #lobby-container h2 {
+            font-weight: 700;
+            letter-spacing: 1px;
+            margin-bottom: 20px;
+            background: linear-gradient(45deg, #ffffff, var(--text-gold));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
         .lobby-box {
-            border: 1px solid rgba(255,255,255,0.2);
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid rgba(255, 255, 255, 0.06);
             padding: 15px;
-            border-radius: 8px;
+            border-radius: 14px;
             margin-bottom: 15px;
-            background: rgba(255,255,255,0.05);
         }
-        input, select, button {
-            padding: 10px;
-            margin: 5px;
-            border-radius: 5px;
-            border: none;
-            font-size: 16px;
-            box-sizing: border-box;
+
+        .lobby-box h3 {
+            font-size: 14px;
+            font-weight: 600;
+            margin-bottom: 10px;
+            color: #ccc;
         }
-        button {
-            background-color: #ff9800;
+
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 8px;
             color: white;
-            cursor: pointer;
-            font-weight: bold;
+            font-size: 15px;
+            text-align: center;
+            transition: all 0.3s;
+            margin-bottom: 5px;
         }
-        button:hover { background-color: #e68a00; }
-        
-        #game-container { display: none; width: 100%; max-width: 1000px; }
+
+        input[type="text"]:focus {
+            border-color: var(--text-gold);
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.2);
+            outline: none;
+        }
+
+        button {
+            padding: 10px 16px;
+            border-radius: 8px;
+            border: none;
+            font-weight: 700;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        button:active { transform: scale(0.97); }
+
+        .btn-primary { background: linear-gradient(135deg, #ff9800 0%, #e65100 100%); color: white; }
+        .btn-success { background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); color: white; }
+        .btn-danger { background: linear-gradient(135deg, #ef5350 0%, #c62828 100%); color: white; }
+
+        #game-container {
+            width: 100%;
+            max-width: 1050px;
+        }
+
         .control-bar {
             display: flex;
             justify-content: space-between;
-            background: rgba(0,0,0,0.4);
-            padding: 10px;
-            border-radius: 8px;
-            margin-bottom: 15px;
             align-items: center;
+            background: var(--panel-bg);
+            border: var(--glass-border);
+            backdrop-filter: blur(12px);
+            padding: 6px 12px;
+            border-radius: 10px;
+            margin-bottom: 6px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            font-size: 12px;
         }
-        
-        /* Table Layout */
+
+        .connected-list {
+            font-size: 11px;
+            color: #b3cbbd;
+            margin-bottom: 8px;
+            background: rgba(0,0,0,0.3);
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: 1px solid rgba(255,255,255,0.05);
+            line-height: 1.4;
+            text-align: center;
+        }
+
+        /* Felt Casino Board Surface Styles */
         .table-surface {
-            background-color: var(--table-color);
-            border: 8px solid #5d4037;
-            border-radius: 50px;
+            background: var(--felt-gradient);
+            border: 8px solid #3e2723;
+            border-radius: 40px;
             min-height: 240px;
             position: relative;
-            margin-bottom: 20px;
-            box-shadow: inset 0 0 20px rgba(0,0,0,0.6);
+            margin-bottom: 12px;
+            box-shadow: inset 0 0 30px rgba(0,0,0,0.8), 0 6px 20px rgba(0,0,0,0.5);
             display: flex;
+            flex-direction: column;
             justify-content: center;
             align-items: center;
             padding: 20px;
-            box-sizing: border-box;
         }
+
         #table-cards {
             display: flex;
             gap: 12px;
@@ -94,234 +169,289 @@
             width: 100%;
             flex-wrap: wrap;
         }
+
+        #table-center-turn-alert {
+            display: none;
+            background: rgba(255, 215, 0, 0.15);
+            border: 2px dashed var(--text-gold);
+            color: var(--text-gold);
+            font-weight: 700;
+            padding: 10px 20px;
+            border-radius: 12px;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+            text-align: center;
+            margin-bottom: 15px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            animation: pulseBanner 2s infinite ease-in-out;
+        }
+
+        @keyframes pulseBanner {
+            0% { transform: scale(1); opacity: 0.9; }
+            50% { transform: scale(1.02); opacity: 1; box-shadow: 0 0 15px rgba(255,215,0,0.3); }
+            100% { transform: scale(1); opacity: 0.9; }
+        }
+
         .table-actions {
             position: absolute;
-            bottom: 10px;
-            right: 20px;
+            bottom: 12px;
+            right: 16px;
         }
 
-        /* Player Interface Area */
-        .player-hub {
-            background: rgba(255,255,255,0.1);
-            padding: 15px;
-            border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-        .connected-list {
-            font-size: 14px;
-            color: #b0bec5;
-            margin-bottom: 10px;
-            background: rgba(0,0,0,0.2);
-            padding: 8px;
-            border-radius: 5px;
-            line-height: 1.6;
-        }
-        .hand-header-row {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 8px;
-        }
-        .hand-display {
-            background: rgba(0,0,0,0.3);
-            min-height: 130px;
-            border-radius: 8px;
-            padding: 10px;
-            display: flex;
-            gap: 8px;
-            overflow-x: auto;
-            align-items: center;
-        }
-
-        /* Notifications Panels */
-        #incoming-request-box, #recall-vote-box {
-            display: none;
-            background: #1565c0;
-            border: 2px solid #fff;
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            align-items: center;
-            justify-content: space-between;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
-        }
-        #recall-vote-box { background: #455a64; }
-
-        /* Dynamic Turn Status Banner */
-        #turn-status-banner {
-            display: none;
-            width: 100%;
-            background: #2e7d32;
-            color: white;
-            text-align: center;
-            padding: 8px;
-            font-weight: bold;
-            border-radius: 5px;
-            margin-bottom: 12px;
-            font-size: 16px;
-            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
-            border: 1px solid #a5d6a7;
-        }
-
-        /* Card Styling */
+        /* Advanced Flat Vector CSS Card Styles */
         .card {
             width: 72px;
             height: 108px;
-            background: var(--card-bg);
-            border-radius: 6px;
-            color: var(--text-dark);
+            background: var(--card-white);
+            border-radius: 8px;
+            color: #1a1a1a;
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             padding: 6px;
-            box-sizing: border-box;
-            font-weight: bold;
-            font-size: 18px;
-            box-shadow: 2px 2px 5px rgba(0,0,0,0.3);
+            font-weight: 700;
+            font-size: 16px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
             cursor: pointer;
-            user-select: none;
             position: relative;
             flex-shrink: 0;
+            transition: transform 0.2s, box-shadow 0.2s;
         }
+
         .card.red { color: #d32f2f; }
-        .card .suit-bottom { align-self: flex-end; transform: rotate(180deg); }
-        
+        .card .suit-center {
+            font-size: 24px;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            opacity: 0.95;
+        }
+        .card .suit-bottom { align-self: flex-end; transform: rotate(180deg); font-size: 12px; }
+        .card .card-rank-top { font-size: 13px; line-height: 1; }
+
+        .card:hover {
+            transform: translateY(-6px) scale(1.02);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5);
+        }
+
         .card-owner-tag {
             position: absolute;
-            bottom: -18px;
+            bottom: -20px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(0,0,0,0.8);
-            color: white;
+            background: rgba(0, 0, 0, 0.85);
+            color: #fff;
             font-size: 10px;
-            padding: 2px 5px;
-            border-radius: 3px;
+            padding: 1px 6px;
+            border-radius: 20px;
             white-space: nowrap;
+            border: 1px solid rgba(255,255,255,0.15);
         }
+
         .thulla-badge {
             position: absolute;
-            top: -15px;
+            top: -16px;
             left: 50%;
             transform: translateX(-50%);
-            background: #e53935;
+            background: #d32f2f;
             color: white;
-            font-size: 9px;
-            font-weight: 900;
+            font-size: 8px;
+            font-weight: 700;
             padding: 2px 6px;
-            border-radius: 10px;
+            border-radius: 30px;
             border: 1px solid white;
             white-space: nowrap;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.4);
             animation: pulse 1.5s infinite linear;
         }
+
         @keyframes pulse {
             0% { transform: translateX(-50%) scale(1); }
-            50% { transform: translateX(-50%) scale(1.05); }
+            50% { transform: translateX(-50%) scale(1.06); }
             100% { transform: translateX(-50%) scale(1); }
         }
-        .action-row {
-            margin-top: 15px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px;
-            align-items: center;
-            background: rgba(0,0,0,0.2);
-            padding: 10px;
-            border-radius: 6px;
+
+        /* Player Interface Hud */
+        .player-hub {
+            background: var(--panel-bg);
+            border: var(--glass-border);
+            backdrop-filter: blur(16px);
+            padding: 15px;
+            border-radius: 14px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
         }
-        .bottom-recall-bar {
-            margin-top: 15px;
-            text-align: center;
+
+        .hand-header-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
             width: 100%;
         }
-        .turn-highlight {
-            color: #ff9800;
-            font-weight: bold;
+
+        .hand-display {
+            background: rgba(0,0,0,0.4);
+            min-height: 140px;
+            border-radius: 10px;
+            padding: 12px;
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            align-items: center;
+            border: 1px solid rgba(0,0,0,0.2);
+            margin-bottom: 12px;
         }
+
+        /* Action Alert Bars Formatting */
+        #incoming-request-box, #recall-vote-box {
+            display: none;
+            background: linear-gradient(90deg, #1565c0, #0d47a1);
+            border: 1px solid rgba(255,255,255,0.3);
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-bottom: 10px;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+            font-size: 13px;
+        }
+        #recall-vote-box { background: linear-gradient(90deg, #37474f, #212121); }
+
+        #turn-status-banner {
+            display: none;
+            width: 100%;
+            background: linear-gradient(90deg, #2e7d32, #1b5e20);
+            color: white;
+            text-align: center;
+            padding: 6px;
+            font-weight: 700;
+            border-radius: 6px;
+            margin-bottom: 10px;
+            font-size: 13px;
+            border: 1px solid #4caf50;
+            box-shadow: 0 4px 10px rgba(76,175,80,0.2);
+        }
+
+        .action-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: rgba(0,0,0,0.3);
+            padding: 10px;
+            border-radius: 8px;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .action-left-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+
+        select {
+            padding: 8px;
+            background: rgba(0,0,0,0.5);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 6px;
+            font-size: 13px;
+        }
+
+        .control-bar button, .action-row button, .hand-header-row button {
+            padding: 8px 12px;
+            font-size: 12px;
+        }
+
+        .bottom-recall-bar { margin-top: 12px; text-align: center; }
+        .turn-highlight { color: var(--text-gold); font-weight: 700; }
+        .my-turn-highlight-text { color: var(--text-gold) !important; font-weight: 700; }
     </style>
 </head>
 <body>
 
-    <!-- SECTION 1: Online Registration Lobby -->
+    <!-- SECTION 1: Lobby Menu Layout -->
     <div id="lobby-container">
-        <h2>♠️ Online Thulla Table ♥️</h2>
-        <input type="text" id="username" placeholder="Your Name" style="width:100%">
-        <hr style="opacity:0.2; margin:15px 0;">
-        
+        <h2>THULLA ONLINE</h2>
         <div class="lobby-box">
-            <h3>Host a New Table</h3>
-            <button onclick="createRoom()" style="background:#4caf50; width:100%">Generate Table Code</button>
+            <input type="text" id="username" placeholder="ENTER YOUR NAME">
         </div>
-
         <div class="lobby-box">
-            <h3>Join Existing Table</h3>
-            <input type="text" id="room-input" placeholder="Enter Room Code" style="width:100%; text-transform:uppercase;">
-            <button onclick="joinRoom()" style="background:#2196f3; width:100%; margin-top:8px;">Connect to Table</button>
+            <h3>HOST NEW TABLE</h3>
+            <button class="btn-success" onclick="createRoom()" style="width:100%">CREATE MATCH</button>
         </div>
-        <h5>By <a href="https://pgxmsm.github.io/me" >pgxMSM</a> </h5> 
-        
+        <div class="lobby-box">
+            <h3>JOIN EXIST TABLE</h3>
+            <input type="text" id="room-input" placeholder="ROOM CODE" style="text-transform:uppercase;">
+            <button class="btn-primary" onclick="joinRoom()" style="width:100%; margin-top:10px;">CONNECT TABLE</button>
+        </div>
+        <h5>By <a href="https://pgxmsm.github.io/me ">pgxMSM</a></h5>
     </div>
 
-    <!-- SECTION 2: Live Sync Game Table -->
-    <div id="game-container">
+    <!-- SECTION 2: Table Interface -->
+    <div id="game-container" style="display: none;">
         <div class="control-bar">
-            <div>Room: <b id="display-room-code" style="color:#ff9800;">-</b></div>
-            <button id="deal-btn" onclick="dealCards()" style="background:#ff9800; display:none;">Shuffle & Deal 52 Cards</button>
-            <button onclick="leaveRoom()" style="background:#f44336;">Leave</button>
-        </div>
-
-        <div class="connected-list" id="active-players-summary">Waiting for players...</div>
-
-        <!-- Live Visual Turn Prompt Indicator Panel -->
-        <div id="turn-status-banner">🟢 IT'S YOUR TURN (FIRST THROW)</div>
-
-        <!-- Blind Transfer Request Banner -->
-        <div id="incoming-request-box">
-            <span id="request-text-info">Player is giving you a card...</span>
+            <div>ROOM: <b id="display-room-code" style="color:var(--text-gold); font-size:13px; letter-spacing:0.5px;">-</b></div>
             <div>
-                <button onclick="respondToTransfer(true)" style="background:#4caf50; margin:0 5px; padding:6px 15px;">Accept</button>
-                <button onclick="respondToTransfer(false)" style="background:#f44336; margin:0; padding:6px 15px;">Reject</button>
+                <button id="deal-btn" onclick="dealCards()" class="btn-primary" style="display:none; margin-right: 5px;">Deal Cards</button>
+                <button class="btn-danger" onclick="leaveRoom()">Leave</button>
             </div>
         </div>
 
-        <!-- Global Card Recall Voting Panel -->
+        <div class="connected-list" id="active-players-summary">Awaiting connection...</div>
+        <div id="turn-status-banner">YOUR ROUND LEAD TURN (FIRST THROW)</div>
+
+        <!-- Alert Notification Popups -->
+        <div id="incoming-request-box">
+            <span id="request-text-info">Incoming offer...</span>
+            <div>
+                <button class="btn-success" onclick="respondToTransfer(true)">Accept</button>
+                <button class="btn-danger" onclick="respondToTransfer(false)" style="margin-left:4px;">Reject</button>
+            </div>
+        </div>
+
         <div id="recall-vote-box">
-            <span id="recall-text-info">Voting status...</span>
+            <span id="recall-text-info">Rollback sequence...</span>
             <div id="vote-actions-div">
-                <button onclick="submitRecallVote(true)" style="background:#4caf50; margin:0 5px; padding:6px 15px;">Accept</button>
-                <button onclick="submitRecallVote(false)" style="background:#f44336; margin:0; padding:6px 15px;">Reject</button>
+                <button class="btn-success" onclick="submitRecallVote(true)">Agree</button>
+                <button class="btn-danger" onclick="submitRecallVote(false)" style="margin-left:4px;">Deny</button>
             </div>
         </div>
 
-        <!-- The Shared Multi-device surface -->
+        <!-- The Felt Surface -->
         <div class="table-surface">
+            <div id="table-center-turn-alert">👉 THROW CARD, IT'S YOUR TURN!</div>
+            
             <div id="table-cards"></div>
             <div class="table-actions">
-                <button id="burn-btn" onclick="clearToPile()" style="background:#795548; font-size:12px;">Make a Pile (Burn)</button>
+                <button id="burn-btn" class="btn-primary" onclick="clearToPile()" style="background:#5d4037; padding: 6px 12px; font-size: 11px;">Burn Pile</button>
             </div>
         </div>
 
-        <!-- Player Interface Panel -->
+        <!-- Player Hub Array -->
         <div class="player-hub">
             <div class="hand-header-row">
-                <h3 style="margin:0;">Your Private Hand (<span id="my-name-display"></span>) <span id="my-turn-display" style="color: #ff9800; margin-left: 10px;"></span></h3>
-                <button id="pick-all-btn" onclick="pickAllCards()" style="background:#e91e63; margin:0; padding:6px 12px; font-size:14px;">📥 Pick All Cards (Thulla)</button>
+                <h3 id="hand-title-text" style="margin:0; font-size:14px; color: white;">Your Hand (<span id="my-name-display">-</span>) <span id="my-turn-display" style="margin-left:4px;"></span></h3>
+                <button id="pick-all-btn" class="btn-danger" onclick="pickAllCards()" style="background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);">Take All Cards</button>
             </div>
             
             <div class="hand-display" id="hand-cards"></div>
 
             <div class="action-row">
-                <button id="throw-btn" onclick="throwSelected()" style="background:#4caf50;">Throw Selected Card</button>
-                <span style="margin: 0 10px; border-left: 1px solid #fff; height: 25px;"></span>
-                <label for="gift-select">Give Card To:</label>
-                <select id="gift-select"></select>
-                <button onclick="giftCard()" style="background:#009688;">Transfer</button>
+                <div class="action-left-group">
+                    <button id="throw-btn" class="btn-success" onclick="throwSelected()">Throw</button>
+                    <span style="opacity:0.2;">|</span>
+                    <select id="gift-select"></select>
+                    <button class="btn-primary" onclick="giftCard()">Send</button>
+                </div>
             </div>
         </div>
 
-        <!-- Small Recall Hand Trigger Button -->
         <div class="bottom-recall-bar">
-            <button onclick="initiateRecallHand()" style="background:#607d8b; font-size:13px; padding:6px 15px; border:1px dashed white; border-radius:4px;">
-                🔄 Vote to Recall Table (Take Cards Back)
+            <button onclick="initiateRecallHand()" style="background: rgba(255,255,255,0.05); font-size: 11px; padding: 5px 12px; border: 1px dashed rgba(255,255,255,0.2); color:#bbb; border-radius: 6px;">
+                🔄 Vote to Undo Last Actions
             </button>
         </div>
     </div>
@@ -329,7 +459,6 @@
     <script>
         const SUPABASE_URL = 'https://qjzwpalnhrctuvwcirat.supabase.co';
         const SUPABASE_KEY = 'sb_publishable_StitNiAsAN8fe9FbM4pzRw_Dw68bC69';
-        
         const dbClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
         const RANK_MAP = {'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9,'10':10,'J':11,'Q':12,'K':13,'A':14};
@@ -342,7 +471,6 @@
 
         let roomCode = '';
         let myName = '';
-        // Added 'first_thrower' string column mapping into global database scope logic
         let roomState = { players: [], table_cards: [], active_transfer: {}, recall_vote: {}, first_thrower: '' };
         let selectedCardIndex = null;
         let channel = null;
@@ -358,27 +486,20 @@
         async function createRoom() {
             setName(); if(!myName) return;
             roomCode = Math.random().toString(36).substring(2,7).toUpperCase();
-            
             const { error } = await dbClient.from('card_rooms').insert([{ 
-                room_code: roomCode, 
-                players: [{ name: myName, hand: [], turn_num: null }], 
-                table_cards: [],
-                active_transfer: {},
-                recall_vote: { active: false, requester: '', approves: [], rejects: [] },
-                first_thrower: ''
+                room_code: roomCode, players: [{ name: myName, hand: [], turn_num: null }], 
+                table_cards: [], active_transfer: {},
+                recall_vote: { active: false, requester: '', approves: [], rejects: [] }, first_thrower: ''
             }]);
-
-            if(error) { alert("Database Error: " + error.message); return; }
+            if(error) { alert("Error: " + error.message); return; }
             startRoomSubscription();
         }
 
         async function joinRoom() {
             setName(); if(!myName) return;
             roomCode = document.getElementById('room-input').value.trim().toUpperCase();
-            
             const { data, error } = await dbClient.from('card_rooms').select('*').eq('room_code', roomCode).single();
-            if(!data || error) { alert("Room code not found!"); return; }
-
+            if(!data || error) { alert("Room validation error!"); return; }
             let currentPlayers = data.players;
             if(!currentPlayers.find(p => p.name === myName)) {
                 currentPlayers.push({ name: myName, hand: [], turn_num: null });
@@ -392,17 +513,11 @@
             document.getElementById('game-container').style.display = 'block';
             document.getElementById('display-room-code').innerText = roomCode;
             document.getElementById('my-name-display').innerText = myName;
-
             fetchCurrentState();
-
             channel = dbClient.channel(`room:${roomCode}`)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'card_rooms', filter: `room_code=eq.${roomCode}` }, 
-                payload => {
-                    roomState = payload.new;
-                    renderUI();
-                }
-            )
-            .subscribe();
+                payload => { roomState = payload.new; renderUI(); }
+            ).subscribe();
         }
 
         async function fetchCurrentState() {
@@ -412,12 +527,9 @@
 
         async function pushState() {
             await dbClient.from('card_rooms').update({ 
-                players: roomState.players, 
-                table_cards: roomState.table_cards,
-                active_transfer: roomState.active_transfer,
-                recall_vote: roomState.recall_vote,
-                first_thrower: roomState.first_thrower,
-                updated_at: new Date()
+                players: roomState.players, table_cards: roomState.table_cards,
+                active_transfer: roomState.active_transfer, recall_vote: roomState.recall_vote,
+                first_thrower: roomState.first_thrower, updated_at: new Date()
             }).eq('room_code', roomCode);
         }
 
@@ -427,7 +539,6 @@
             const leadSuit = cards[0].card.suit.name;
             let broken = cards.some(c => c.card.suit.name !== leadSuit);
             if (!broken) return null;
-
             let highVal = -1, targetIdx = -1;
             cards.forEach((item, idx) => {
                 if(item.card.suit.name === leadSuit) {
@@ -438,7 +549,6 @@
             return targetIdx;
         }
 
-        // Returns name of the player who laid the highest card matching the initial led suit family
         function getHighestCardPlayerName() {
             const cards = roomState.table_cards;
             if (!cards || cards.length === 0) return '';
@@ -458,18 +568,16 @@
             return roomState.table_cards.some(item => item.owner === myName);
         }
 
-        // Step 2: UI Rendering & Mode Locks
         function renderUI() {
             const summary = document.getElementById('active-players-summary');
             const sortedPlayersByTurn = [...roomState.players].sort((a,b) => (a.turn_num || 99) - (b.turn_num || 99));
-            summary.innerHTML = "<b>Live Table Status:</b><br>" + sortedPlayersByTurn.map(p => {
-                const turnLabel = p.turn_num ? `<span class="turn-highlight">[Turn ${p.turn_num}]</span> ` : '';
-                // Append small text indicator on the general dashboard breakdown
-                const leadIndicator = (roomState.first_thrower === p.name && (!roomState.table_cards || roomState.table_cards.length === 0)) ? ' <small style="color:#4caf50;">(1st Lead)</small>' : '';
-                return `${turnLabel}${p.name} (${p.hand.length} cards)${leadIndicator}`;
-            }).join('  |  ');
+            summary.innerHTML = "<b>Live Status:</b> " + sortedPlayersByTurn.map(p => {
+                const turnLabel = p.turn_num ? `<span class="turn-highlight">T${p.turn_num}</span>:` : '';
+                const leadIndicator = (roomState.first_thrower === p.name && (!roomState.table_cards || roomState.table_cards.length === 0)) ? '🔥' : '';
+                return `${turnLabel}${p.name}(${p.hand.length}c)${leadIndicator}`;
+            }).join(' | ');
 
-            document.getElementById('deal-btn').style.display = (roomState.players[0]?.name === myName) ? 'block' : 'none';
+            document.getElementById('deal-btn').style.display = (roomState.players[0]?.name === myName) ? 'inline-block' : 'none';
 
             const select = document.getElementById('gift-select'); select.innerHTML = '';
             roomState.players.forEach(p => {
@@ -502,14 +610,7 @@
             const vote = roomState.recall_vote;
             if (vote && vote.active) {
                 const totalNeeded = roomState.players.length;
-                const currentApproves = vote.approves ? vote.approves.length : 0;
-                document.getElementById('recall-text-info').innerText = `🔄 RECALL REQUEST: ${vote.requester} wants to return all cards. (Agreed: ${currentApproves} / ${totalNeeded})`;
-                
-                if (vote.approves.includes(myName) || vote.rejects.includes(myName)) {
-                    document.getElementById('vote-actions-div').style.display = 'none';
-                } else {
-                    document.getElementById('vote-actions-div').style.display = 'block';
-                }
+                document.getElementById('recall-text-info').innerText = `🔄 RECALL VOTE: ${vote.requester} (${vote.approves.length}/${totalNeeded})`;
                 voteBox.style.display = 'flex';
             } else {
                 voteBox.style.display = 'none';
@@ -527,19 +628,25 @@
                 burnBtn.style.cursor = "pointer";
             }
 
-            // NEW TURNS VALIDATOR: Evaluate rights for button opacity changes
             const throwBtn = document.getElementById('throw-btn');
             const isTableEmpty = (!roomState.table_cards || roomState.table_cards.length === 0);
             const amIFirstThrower = (roomState.first_thrower === myName);
             const turnStatusBanner = document.getElementById('turn-status-banner');
+            const tableCenterAlert = document.getElementById('table-center-turn-alert');
+            const handTitleText = document.getElementById('hand-title-text');
 
             if (isTableEmpty && amIFirstThrower) {
                 turnStatusBanner.style.display = "block";
+                tableCenterAlert.style.display = "block";
+                handTitleText.style.color = "var(--text-gold)";
+                handTitleText.innerHTML = `Your Hand (${myName}) <span id="my-turn-display" class="my-turn-highlight-text">[IT'S YOUR TURN]</span>`;
                 throwBtn.style.opacity = "1";
                 throwBtn.style.cursor = "pointer";
-                throwBtn.title = "You have the lead turn! Throw first.";
             } else {
                 turnStatusBanner.style.display = "none";
+                tableCenterAlert.style.display = "none";
+                handTitleText.style.color = "white";
+                
                 if (hasUserThrownThisRound() || (isTableEmpty && !amIFirstThrower)) {
                     throwBtn.style.opacity = "0.4";
                     throwBtn.style.cursor = "not-allowed";
@@ -553,8 +660,8 @@
                 roomState.table_cards.forEach((item, index) => {
                     let cardDiv = document.createElement('div');
                     cardDiv.className = `card ${item.card.suit.red ? 'red' : ''}`;
-                    let badge = (index === targetThullaIdx) ? `<div class="thulla-badge">🚨 THULLA TARGET</div>` : '';
-                    cardDiv.innerHTML = `${badge}<div>${item.card.value} ${item.card.suit.sign}</div><div class="suit-bottom">${item.card.value} ${item.card.suit.sign}</div><div class="card-owner-tag">${item.owner}</div>`;
+                    let badge = (index === targetThullaIdx) ? `<div class="thulla-badge">🚨 TARGET</div>` : '';
+                    cardDiv.innerHTML = `${badge}<div class="card-rank-top">${item.card.value}</div><div class="suit-center">${item.card.suit.sign}</div><div class="suit-bottom">${item.card.value} ${item.card.suit.sign}</div><div class="card-owner-tag">${item.owner}</div>`;
                     tableElem.appendChild(cardDiv);
                 });
             }
@@ -563,24 +670,43 @@
             const handElem = document.getElementById('hand-cards'); handElem.innerHTML = '';
             
             if(me) {
-                document.getElementById('my-turn-display').innerText = me.turn_num ? `[Turn ${me.turn_num}]` : '';
+                if (!(isTableEmpty && amIFirstThrower)) {
+                    document.getElementById('my-turn-display').innerText = me.turn_num ? `[Turn ${me.turn_num}]` : '';
+                }
+                
                 if(me.hand) {
                     me.hand.forEach((card, idx) => {
                         let cardDiv = document.createElement('div');
                         cardDiv.className = `card ${card.suit.red ? 'red' : ''}`;
-                        if(idx === selectedCardIndex) cardDiv.style.border = "3px solid #ff9800";
-                        cardDiv.innerHTML = `<div>${card.value} ${card.suit.sign}</div><div class="suit-bottom">${card.value} ${card.suit.sign}</div>`;
+                        if(idx === selectedCardIndex) cardDiv.style.transform = "translateY(-12px)";
+                        cardDiv.innerHTML = `<div class="card-rank-top">${card.value}</div><div class="suit-center">${card.suit.sign}</div><div class="suit-bottom">${card.value} ${card.suit.sign}</div>`;
                         cardDiv.onclick = () => { selectedCardIndex = (selectedCardIndex === idx) ? null : idx; renderUI(); };
                         handElem.appendChild(cardDiv);
                     });
                 }
             }
-            
+
+            // NEW CORE RULE IMPLEMENTATION: Dynamically set button properties based on suit family coherence
             const currentTableCount = roomState.table_cards ? roomState.table_cards.length : 0;
-            document.getElementById('pick-all-btn').innerText = currentTableCount ? `📥 Pick All (${currentTableCount} Cards)` : "📥 Table is Empty";
+            const pickAllBtn = document.getElementById('pick-all-btn');
+            
+            if (currentTableCount === 0) {
+                pickAllBtn.style.opacity = "0.4";
+                pickAllBtn.style.cursor = "not-allowed";
+                pickAllBtn.innerText = "Take All";
+            } else if (targetThullaIdx === null) {
+                // All cards are from the SAME family -> Lock the option because no Thulla is breaking the game rules
+                pickAllBtn.style.opacity = "0.4";
+                pickAllBtn.style.cursor = "not-allowed";
+                pickAllBtn.innerText = "Same Suit Lock";
+            } else {
+                // Different suit families detected -> Thulla is active! Allow pickup
+                pickAllBtn.style.opacity = "1";
+                pickAllBtn.style.cursor = "pointer";
+                pickAllBtn.innerText = `Take All (${currentTableCount})`;
+            }
         }
 
-        // Step 3: Game Action Managers
         function dealCards() {
             let deck = [];
             SUITS.forEach(s => Object.keys(RANK_MAP).forEach(v => deck.push({ value: v, suit: s })));
@@ -590,58 +716,36 @@
             roomState.players.forEach(p => p.hand = []);
             
             let pIdx = 0;
-            while(deck.length > 0) {
-                roomState.players[pIdx % numPlayers].hand.push(deck.pop());
-                pIdx++;
-            }
+            while(deck.length > 0) { roomState.players[pIdx % numPlayers].hand.push(deck.pop()); pIdx++; }
             roomState.players.forEach(p => sortPlayerHand(p.hand));
 
             let aceSpadesOwnerIndex = -1;
             roomState.players.forEach((p, index) => {
-                const hasAceSpades = p.hand.some(c => c.value === 'A' && c.suit.name === 'Spades');
-                if (hasAceSpades) aceSpadesOwnerIndex = index;
+                if (p.hand.some(c => c.value === 'A' && c.suit.name === 'Spades')) aceSpadesOwnerIndex = index;
             });
 
             let remainingPositions = [];
-            for(let i = 0; i < numPlayers; i++) {
-                if(i !== aceSpadesOwnerIndex) remainingPositions.push(i);
-            }
+            for(let i = 0; i < numPlayers; i++) { if(i !== aceSpadesOwnerIndex) remainingPositions.push(i); }
             for (let i = remainingPositions.length - 1; i > 0; i--) {
-                const j = Math.floor(Math.random() * (i + 1));
-                [remainingPositions[i], remainingPositions[j]] = [remainingPositions[j], remainingPositions[i]];
+                const j = Math.floor(Math.random() * (i + 1)); [remainingPositions[i], remainingPositions[j]] = [remainingPositions[j], remainingPositions[i]];
             }
 
             roomState.players[aceSpadesOwnerIndex].turn_num = 1;
-            remainingPositions.forEach((playerIndex, loopIndex) => {
-                roomState.players[playerIndex].turn_num = loopIndex + 2;
-            });
+            remainingPositions.forEach((playerIndex, loopIndex) => { roomState.players[playerIndex].turn_num = loopIndex + 2; });
 
-            // CRITICAL STEP: Set the first turn lead to whoever got the Ace of Spades
             roomState.first_thrower = roomState.players[aceSpadesOwnerIndex].name;
-
             roomState.table_cards = [];
             roomState.active_transfer = {};
             roomState.recall_vote = { active: false, requester: '', approves: [], rejects: [] };
             pushState();
         }
 
-        // Intercept card placement mechanics if turn bounds are violated
         function throwSelected() {
             if(selectedCardIndex === null) return;
-            
-            const isTableEmpty = (!roomState.table_cards || roomState.table_cards.length === 0);
-            const amIFirstThrower = (roomState.first_thrower === myName);
-
-            // CRITICAL STEP: Prevent a non-lead player from opening an empty table out of turn order
-            if (isTableEmpty && !amIFirstThrower) {
-                alert(`⛔ Turn Violation: Waiting for ${roomState.first_thrower} to play the first card!`);
-                return;
+            if ((!roomState.table_cards || roomState.table_cards.length === 0) && roomState.first_thrower !== myName) {
+                alert(`⛔ Wait for ${roomState.first_thrower} to play lead.`); return;
             }
-
-            if (hasUserThrownThisRound()) {
-                alert("⛔ Rule Violation: You have already thrown a card in this round!");
-                return;
-            }
+            if (hasUserThrownThisRound()) { alert("⛔ You already threw a card!"); return; }
 
             let me = roomState.players.find(p => p.name === myName);
             let card = me.hand.splice(selectedCardIndex, 1)[0];
@@ -655,50 +759,42 @@
             if(!roomState.table_cards || !roomState.table_cards.length) return;
             
             const targetThullaIdx = getThullaTargetIndex();
-            if (targetThullaIdx !== null) {
-                const thullaOwnerName = roomState.table_cards[targetThullaIdx].owner;
-                if (myName !== thullaOwnerName) {
-                    alert(`... Only ${thullaOwnerName} can pick up these cards.`);
-                    return;
-                }
-                
-                // CRITICAL STEP: Whichever player picks up the Thulla pile gets the next First Lead Turn right away
-                roomState.first_thrower = thullaOwnerName;
+            
+            // NEW VERIFICATION STAGE: Hard check if cards belong to the same family
+            if (targetThullaIdx === null) {
+                alert("⛔ Rule Enforcement: You cannot take cards back if everyone played the same family! Use 'Burn Pile' instead.");
+                return;
             }
 
-            let me = roomState.players.find(p => p.name === myName);
-            while(roomState.table_cards.length > 0) {
-                me.hand.push(roomState.table_cards.shift().card);
+            const thullaOwnerName = roomState.table_cards[targetThullaIdx].owner;
+            if (myName !== thullaOwnerName) { 
+                alert(`⛔ Access Denied: Only ${thullaOwnerName} received the Thulla and can pick up these cards.`); 
+                return; 
             }
+
+            roomState.first_thrower = thullaOwnerName;
+            let me = roomState.players.find(p => p.name === myName);
+            while(roomState.table_cards.length > 0) me.hand.push(roomState.table_cards.shift().card);
             sortPlayerHand(me.hand);
             pushState();
         }
 
         function giftCard() {
-            if(selectedCardIndex === null) { alert("Select a card to transfer first."); return; }
-            const tf = roomState.active_transfer;
-            if(tf && tf.status === 'pending') { alert("Another transfer is processing."); return; }
-
+            if(selectedCardIndex === null) return;
+            if(roomState.active_transfer && roomState.active_transfer.status === 'pending') return;
             let targetName = document.getElementById('gift-select').value;
             let me = roomState.players.find(p => p.name === myName);
-            let stagedCard = me.hand.splice(selectedCardIndex, 1)[0];
-            
-            roomState.active_transfer = { from: myName, to: targetName, card: stagedCard, status: 'pending' };
+            roomState.active_transfer = { from: myName, to: targetName, card: me.hand.splice(selectedCardIndex, 1)[0], status: 'pending' };
             selectedCardIndex = null;
             pushState();
-            alert(`Sent request to ${targetName}...`);
         }
 
         async function respondToTransfer(isAccepted) {
-            const tf = roomState.active_transfer;
-            if (!tf) return;
-
+            const tf = roomState.active_transfer; if (!tf) return;
             if (isAccepted) {
                 let me = roomState.players.find(p => p.name === myName);
-                me.hand.push(tf.card);
-                sortPlayerHand(me.hand);
-                roomState.active_transfer = {}; 
-                alert("Card added!");
+                me.hand.push(tf.card); sortPlayerHand(me.hand);
+                roomState.active_transfer = {};
             } else {
                 roomState.active_transfer.status = 'rejected';
             }
@@ -706,88 +802,41 @@
         }
 
         function initiateRecallHand() {
-            if (!roomState.table_cards || roomState.table_cards.length === 0) {
-                alert("The table is completely empty! Nothing to recall.");
-                return;
-            }
-            if (roomState.recall_vote && roomState.recall_vote.active) {
-                alert("Another recall vote is already running.");
-                return;
-            }
-
-            roomState.recall_vote = {
-                active: true,
-                requester: myName,
-                approves: [myName],
-                rejects: []
-            };
+            if (!roomState.table_cards.length || roomState.recall_vote.active) return;
+            roomState.recall_vote = { active: true, requester: myName, approves: [myName], rejects: [] };
             pushState();
         }
 
         function submitRecallVote(agreed) {
-            if (!roomState.recall_vote || !roomState.recall_vote.active) return;
-
-            if (agreed) {
-                if (!roomState.recall_vote.approves.includes(myName)) {
-                    roomState.recall_vote.approves.push(myName);
-                }
-            } else {
-                if (!roomState.recall_vote.rejects.includes(myName)) {
-                    roomState.recall_vote.rejects.push(myName);
-                }
-            }
-
-            const totalPlayers = roomState.players.length;
+            if (!roomState.recall_vote.active) return;
+            if (agreed) { if (!roomState.recall_vote.approves.includes(myName)) roomState.recall_vote.approves.push(myName); }
+            else { roomState.recall_vote.rejects.push(myName); }
 
             if (roomState.recall_vote.rejects.length > 0) {
-                alert("Recall failed! Someone rejected the request.");
                 roomState.recall_vote = { active: false, requester: '', approves: [], rejects: [] };
-                pushState();
-                return;
-            }
-
-            if (roomState.recall_vote.approves.length === totalPlayers) {
-                alert("Recall Approved! Returning all cards back to original hands.");
-
-                while (roomState.table_cards && roomState.table_cards.length > 0) {
+            } else if (roomState.recall_vote.approves.length === roomState.players.length) {
+                while (roomState.table_cards.length > 0) {
                     const item = roomState.table_cards.shift();
-                    const cardOwnerObj = roomState.players.find(p => p.name === item.owner);
-                    if (cardOwnerObj) cardOwnerObj.hand.push(item.card);
+                    let ownerObj = roomState.players.find(p => p.name === item.owner);
+                    if (ownerObj) ownerObj.hand.push(item.card);
                 }
-
                 roomState.players.forEach(p => sortPlayerHand(p.hand));
                 roomState.recall_vote = { active: false, requester: '', approves: [], rejects: [] };
             }
-
             pushState();
         }
 
         function clearToPile() { 
-            if(!roomState.table_cards || !roomState.table_cards.length) return;
-            if (getThullaTargetIndex() !== null) {
-                alert("⛔ Action Blocked: Someone has received a Thulla!");
-                return;
-            }
-            
-            if(confirm("⚠️ WARNING: Drop all cards into a closed pile?")) {
-                // CRITICAL STEP: On a clean burn round, find who threw the highest value card of the lead family and make them 1st thrower for next round
-                const roundWinnerName = getHighestCardPlayerName();
-                roomState.first_thrower = roundWinnerName;
-
-                roomState.table_cards = []; 
-                pushState(); 
+            if(!roomState.table_cards.length || getThullaTargetIndex() !== null) return;
+            if(confirm("Burn table cards completely?")) {
+                roomState.first_thrower = getHighestCardPlayerName();
+                roomState.table_cards = []; pushState(); 
             }
         }
 
-        function setName() { myName = document.getElementById('username').value.trim(); if(!myName) alert("Enter your name first!"); }
+        function setName() { myName = document.getElementById('username').value.trim(); }
         function leaveRoom() { if(channel) channel.unsubscribe(); location.reload(); }
-
-        window.addEventListener('beforeunload', (event) => {
-            if (roomCode && myName) {
-                event.preventDefault();
-                event.returnValue = "Are you sure you want to leave the active match?";
-            }
-        });
+        window.addEventListener('beforeunload', (e) => { if(roomCode&&myName){ e.preventDefault(); e.returnValue = ""; } });
     </script>
 </body>
 </html>
