@@ -113,6 +113,7 @@
         .btn-primary { background: linear-gradient(135deg, #ff9800 0%, #e65100 100%); color: white; }
         .btn-success { background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%); color: white; }
         .btn-danger { background: linear-gradient(135deg, #ef5350 0%, #c62828 100%); color: white; }
+        .btn-info { background: linear-gradient(135deg, #2196f3 0%, #1565c0 100%); color: white; }
 
         #game-container {
             width: 100%;
@@ -131,6 +132,12 @@
             margin-bottom: 6px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
             font-size: 12px;
+        }
+
+        .header-right-group {
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
         .connected-list {
@@ -185,7 +192,6 @@
             text-shadow: 0 2px 4px rgba(0,0,0,0.5);
         }
 
-        /* Dynamic Alternative Layout Style for passive turn indicators */
         .passive-turn-style {
             background: rgba(255, 255, 255, 0.08) !important;
             border: 2px dashed rgba(255, 255, 255, 0.2) !important;
@@ -372,8 +378,11 @@
     <div id="game-container" style="display: none;">
         <div class="control-bar">
             <div>ROOM: <b id="display-room-code" style="color:var(--text-gold); font-size:13px; letter-spacing:0.5px;">-</b></div>
-            <div>
-                <button id="deal-btn" onclick="dealCards()" class="btn-primary" style="display:none; margin-right: 5px;">Deal Cards</button>
+            
+            <div class="header-right-group">
+                <!-- NEW: Manual Reconnect Utility Trigger Button -->
+                <button id="reconnect-btn" onclick="manualReconnect()" class="btn-info" style="padding: 6px 10px; font-size: 11px;">🔄 Reconnect</button>
+                <button id="deal-btn" onclick="dealCards()" class="btn-primary" style="display:none;">Deal Cards</button>
                 <button class="btn-danger" onclick="leaveRoom()">Leave</button>
             </div>
         </div>
@@ -490,11 +499,50 @@
             document.getElementById('game-container').style.display = 'block';
             document.getElementById('display-room-code').innerText = roomCode;
             document.getElementById('my-name-display').innerText = myName;
+            
             fetchCurrentState();
+
+            // Establish fresh real-time web-socket link channel structures
             channel = dbClient.channel(`room:${roomCode}`)
             .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'card_rooms', filter: `room_code=eq.${roomCode}` }, 
                 payload => { roomState = payload.new; renderUI(); }
             ).subscribe();
+        }
+
+        // NEW MANUAL RECONNECT FLOW: Safely rebuilds the channel listener matrix without data resets
+        async function manualReconnect() {
+            const btn = document.getElementById('reconnect-btn');
+            btn.innerText = "Connecting...";
+            btn.style.opacity = "0.6";
+
+            try {
+                // 1. Unsubscribe cleanly from old stalled channel socket instances
+                if (channel) {
+                    await channel.unsubscribe();
+                }
+                
+                // 2. Refresh snapshot data natively from the cloud table row storage
+                const { data, error } = await dbClient.from('card_rooms').select('*').eq('room_code', roomCode).single();
+                if (error || !data) throw error;
+                
+                roomState = data;
+                
+                // 3. Re-initialize pipeline subscription channel
+                channel = dbClient.channel(`room:${roomCode}`)
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'card_rooms', filter: `room_code=eq.${roomCode}` }, 
+                    payload => { roomState = payload.new; renderUI(); }
+                ).subscribe();
+
+                renderUI();
+                btn.innerText = "🔄 Reconnect";
+                btn.style.opacity = "1";
+                alert("🟢 Table synchronized successfully!");
+            } catch (err) {
+                console.error("Manual Reconnection Drop:", err);
+                btn.innerText = "❌ Retry";
+                btn.style.opacity = "1";
+                alert("⚠️ Reconnection failed. Check your data or cellular reception status.");
+            }
         }
 
         async function fetchCurrentState() {
@@ -545,23 +593,27 @@
             return roomState.table_cards.some(item => item.owner === myName);
         }
 
-        // Helper calculation logic to find out whose round loop turn it is next
         function getLogicalNextTurnPlayerName() {
             if (!roomState.table_cards || roomState.table_cards.length === 0) {
                 return roomState.first_thrower;
             }
             
-            // Look up who played the very last card thrown onto the grid
             const lastCardOwner = roomState.table_cards[roomState.table_cards.length - 1].owner;
             const currentOwnerProfile = roomState.players.find(p => p.name === lastCardOwner);
             if (!currentOwnerProfile || !currentOwnerProfile.turn_num) return '';
 
-            // Find who holds the next sequential number loop assignment position
             const totalCount = roomState.players.length;
-            let targetNextTurnNum = (currentOwnerProfile.turn_num % totalCount) + 1;
+            let targetNextTurnNum = currentOwnerProfile.turn_num;
 
-            const nextPlayerObj = roomState.players.find(p => p.turn_num === targetNextTurnNum);
-            return nextPlayerObj ? nextPlayerObj.name : '';
+            for (let i = 0; i < totalCount; i++) {
+                targetNextTurnNum = (targetNextTurnNum % totalCount) + 1;
+                const nextPlayerObj = roomState.players.find(p => p.turn_num === targetNextTurnNum);
+                
+                if (nextPlayerObj && nextPlayerObj.hand && nextPlayerObj.hand.length > 0) {
+                    return nextPlayerObj.name;
+                }
+            }
+            return roomState.first_thrower;
         }
 
         function renderUI() {
@@ -630,12 +682,10 @@
             const tableCenterAlert = document.getElementById('table-center-turn-alert');
             const handTitleText = document.getElementById('hand-title-text');
 
-            // NEW STATE LOGIC PATHWAY: Track logical current sequential turns cleanly
             const logicalTurnPlayerName = getLogicalNextTurnPlayerName();
             const isItMyLogicalTurn = (logicalTurnPlayerName === myName);
 
             if (isTableEmpty) {
-                // Table is completely empty -> Strict enforcement locks for 1st thrower remain active
                 if (amIFirstThrower) {
                     tableCenterAlert.style.display = "block";
                     tableCenterAlert.classList.remove('passive-turn-style');
@@ -656,7 +706,6 @@
                     throwBtn.style.cursor = "not-allowed";
                 }
             } else {
-                // MODIFIED BEHAVIOR: The table has cards down. Guide players with prompts but do NOT block clicks!
                 tableCenterAlert.style.display = "block";
                 tableCenterAlert.classList.add('passive-turn-style');
                 
@@ -664,18 +713,20 @@
                     tableCenterAlert.innerText = "⚡ Your turn to reply to the trick!";
                     handTitleText.style.color = "var(--text-gold)";
                     handTitleText.innerHTML = `Your Hand (${myName}) <span id="my-turn-display" class="my-turn-highlight-text">[YOUR TURN TO REPLY]</span>`;
+                    
+                    throwBtn.style.opacity = "1";
+                    throwBtn.style.cursor = "pointer";
                 } else {
                     tableCenterAlert.innerText = `⏳ Turn order path: Waiting for ${logicalTurnPlayerName}...`;
                     handTitleText.style.color = "white";
+                    
+                    throwBtn.style.opacity = "0.4";
+                    throwBtn.style.cursor = "not-allowed";
                 }
 
-                // Rule Enforcement Override: Check single card throw limit per round layout structure
                 if (hasUserThrownThisRound()) {
                     throwBtn.style.opacity = "0.4";
                     throwBtn.style.cursor = "not-allowed";
-                } else {
-                    throwBtn.style.opacity = "1";
-                    throwBtn.style.cursor = "pointer";
                 }
             }
 
@@ -693,7 +744,6 @@
             const handElem = document.getElementById('hand-cards'); handElem.innerHTML = '';
             
             if(me) {
-                // Ensure standard turn label calculations render perfectly on non-active loops
                 if (isTableEmpty && !amIFirstThrower) {
                     document.getElementById('my-turn-display').innerText = me.turn_num ? `[Turn ${me.turn_num}]` : '';
                 } else if (!isTableEmpty && !isItMyLogicalTurn) {
@@ -765,9 +815,20 @@
 
         function throwSelected() {
             if(selectedCardIndex === null) return;
-            if ((!roomState.table_cards || roomState.table_cards.length === 0) && roomState.first_thrower !== myName) {
-                alert(`... Wait for ${roomState.first_thrower} to play lead.`); return;
+            
+            const isTableEmpty = (!roomState.table_cards || roomState.table_cards.length === 0);
+            const amIFirstThrower = (roomState.first_thrower === myName);
+            const logicalTurnPlayerName = getLogicalNextTurnPlayerName();
+
+            if (isTableEmpty && !amIFirstThrower) {
+                alert(` Wait for ${roomState.first_thrower} to play lead.`); return;
             }
+
+            if (!isTableEmpty && logicalTurnPlayerName !== myName) {
+                alert(`⛔ Turn Restriction: It is currently ${logicalTurnPlayerName}'s turn! Please wait your turn.`);
+                return;
+            }
+
             if (hasUserThrownThisRound()) { alert("⛔ You already threw a card!"); return; }
 
             let me = roomState.players.find(p => p.name === myName);
