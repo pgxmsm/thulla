@@ -586,6 +586,15 @@
             return roomState.table_cards.some(item => item.owner === myName);
         }
 
+        // NEW CHECK UTILITY: Evaluates if the deck configuration is fresh out of deal state (combined total cards = 52)
+        function isFirstRoundAfterDeal() {
+            let totalCardsInHands = 0;
+            roomState.players.forEach(p => {
+                if (p.hand) totalCardsInHands += p.hand.length;
+            });
+            return totalCardsInHands === 52;
+        }
+
         function getLogicalNextTurnPlayerName() {
             if (!roomState.table_cards || roomState.table_cards.length === 0) {
                 return roomState.first_thrower;
@@ -703,7 +712,6 @@
                 tableCenterAlert.classList.add('passive-turn-style');
                 
                 if (targetThullaIdx !== null) {
-                    // Thulla is active! Modify message to warn about rule breaking
                     const currentTargetName = roomState.table_cards[targetThullaIdx].owner;
                     tableCenterAlert.innerText = `🚨 THULLA ACTIVE ON ${currentTargetName.toUpperCase()}! DO NOT PLAY!`;
                 } else if (isItMyLogicalTurn && !hasUserThrownThisRound()) {
@@ -715,7 +723,6 @@
                     handTitleText.style.color = "white";
                 }
 
-                // If Thulla is on table, keep throw active so people can get caught breaking the rule!
                 if (hasUserThrownThisRound()) {
                     throwBtn.style.opacity = "0.4";
                     throwBtn.style.cursor = "not-allowed";
@@ -808,14 +815,12 @@
             pushState();
         }
 
-        // UPDATED: Added a strict Rule Enforcement catch for out-of-order plays during active Thulla penalties
         function throwSelected() {
             if(selectedCardIndex === null) return;
             
             const isTableEmpty = (!roomState.table_cards || roomState.table_cards.length === 0);
             const amIFirstThrower = (roomState.first_thrower === myName);
             const logicalTurnPlayerName = getLogicalNextTurnPlayerName();
-            const targetThullaIdx = getThullaTargetIndex();
 
             if (isTableEmpty && !amIFirstThrower) {
                 alert(` Wait for ${roomState.first_thrower} to play lead.`); return;
@@ -823,32 +828,52 @@
 
             if (hasUserThrownThisRound()) { alert("⛔ You already threw a card!"); return; }
 
-            // NEW CRITICAL ENFORCEMENT: Detect if a Thulla is active and someone else tries to keep playing
-            if (!isTableEmpty && targetThullaIdx !== null) {
-                const genuineTargetName = roomState.table_cards[targetThullaIdx].owner;
-                
-                alert(`💥 PENALTY FOUL! A Thulla was already imposed on ${genuineTargetName.toUpperCase()}! Because you broke the rule and played anyway, you receive all cards as a penalty!`);
-                
-                // Extract rule-breaker's card selection first
+            // MODIFIED STEP: Intercept and evaluate card drops before publishing state mutations
+            if (!isTableEmpty) {
                 let me = roomState.players.find(p => p.name === myName);
-                let illegallyPlayedCard = me.hand.splice(selectedCardIndex, 1)[0];
-                
-                // Add their own card and ALL cards currently sitting on the table directly into the rule breaker's private hand
-                me.hand.push(illegallyPlayedCard);
-                while(roomState.table_cards.length > 0) {
-                    me.hand.push(roomState.table_cards.shift().card);
+                let targetedCard = me.hand[selectedCardIndex];
+                const leadSuit = roomState.table_cards[0].card.suit.name;
+
+                // Rule Hook: Detect if the card breaks the suit family
+                if (targetedCard.suit.name !== leadSuit) {
+                    
+                    // CRITICAL CHECK: If this is the absolute 1st round of the game, intercept and force a clean auto-burn
+                    if (isFirstRoundAfterDeal()) {
+                        alert(`♣️ Opening Round Rule: A suit family was broken on the very first round of the game! The table cards have been automatically burned to the pile. No Thulla is imposed.`);
+                        
+                        // Drop card from hand cleanly without leaving trash on table
+                        me.hand.splice(selectedCardIndex, 1);
+                        selectedCardIndex = null;
+
+                        // Find who holds the lead card and make them the opener of the next clean round
+                        const roundWinnerName = getHighestCardPlayerName();
+                        roomState.first_thrower = roundWinnerName;
+                        roomState.table_cards = []; // Instantly empty board state
+                        pushState();
+                        return;
+                    }
+
+                    // Standard Mid-Game Rule: Treat as an active Thulla penalty block
+                    const targetThullaIdx = getThullaTargetIndex();
+                    if (targetThullaIdx !== null) {
+                        const genuineTargetName = roomState.table_cards[targetThullaIdx].owner;
+                        alert(`💥 PENALTY FOUL! A Thulla was already imposed on ${genuineTargetName.toUpperCase()}! Because you broke the rule and played anyway, you receive all cards as a penalty!`);
+                        
+                        let illegallyPlayedCard = me.hand.splice(selectedCardIndex, 1)[0];
+                        me.hand.push(illegallyPlayedCard);
+                        while(roomState.table_cards.length > 0) {
+                            me.hand.push(roomState.table_cards.shift().card);
+                        }
+                        sortPlayerHand(me.hand);
+                        selectedCardIndex = null;
+                        roomState.first_thrower = myName;
+                        pushState();
+                        return;
+                    }
                 }
-                
-                sortPlayerHand(me.hand);
-                selectedCardIndex = null;
-                
-                // Force the rule-breaker to lead the next trick round
-                roomState.first_thrower = myName;
-                pushState();
-                return;
             }
 
-            // Standard Turn Order Verification Lock
+            // Standard Turn Order Verification Lock (Only run if a first-round burn didn't trigger)
             if (!isTableEmpty && logicalTurnPlayerName !== myName) {
                 alert(`(oops) Turn Restriction: It is currently ${logicalTurnPlayerName}'s turn! Please wait your turn.`);
                 return;
@@ -874,7 +899,7 @@
 
             const thullaOwnerName = roomState.table_cards[targetThullaIdx].owner;
             if (myName !== thullaOwnerName) { 
-                alert(`⛔ Access Denied: Only ${thullaOwnerName} received the Thulla and can pick up these cards.`); 
+                alert(`... Only ${thullaOwnerName} received the Thulla and can pick up these cards.`); 
                 return; 
             }
 
