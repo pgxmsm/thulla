@@ -192,6 +192,33 @@
             text-shadow: 0 2px 4px rgba(0,0,0,0.5);
         }
 
+        .first-turn-break-alert {
+            background: rgba(33, 150, 243, 0.15) !important;
+            border: 2px dashed #2196f3 !important;
+            color: #64b5f6 !important;
+            animation: pulseBlue 2s infinite ease-in-out;
+        }
+
+        /* NEW: Flashing crimson banner theme specifically built for rule violation events */
+        .foul-penalty-shift-alert {
+            background: rgba(239, 83, 80, 0.2) !important;
+            border: 2px dashed #ef5350 !important;
+            color: #ff8a80 !important;
+            animation: pulseFoul 1.5s infinite linear;
+        }
+
+        @keyframes pulseFoul {
+            0% { transform: scale(1); box-shadow: 0 0 5px rgba(239,83,80,0.2); }
+            50% { transform: scale(1.02); box-shadow: 0 0 20px rgba(239,83,80,0.5); }
+            100% { transform: scale(1); box-shadow: 0 0 5px rgba(239,83,80,0.2); }
+        }
+
+        @keyframes pulseBlue {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); box-shadow: 0 0 15px rgba(33,150,243,0.3); }
+            100% { transform: scale(1); }
+        }
+
         .passive-turn-style {
             background: rgba(255, 255, 255, 0.08) !important;
             border: 2px dashed rgba(255, 255, 255, 0.2) !important;
@@ -551,9 +578,17 @@
             }).eq('room_code', roomCode);
         }
 
+        // UPDATED: Dynamically checks if a foul occurred and points the target indicator to the foul-committer's card
         function getThullaTargetIndex() {
             const cards = roomState.table_cards;
             if (!cards || cards.length < 2) return null;
+            
+            // Check if there is an active foul entry sitting on the board history stack
+            const foulCardIndex = cards.findIndex(c => c.is_foul === true);
+            if (foulCardIndex !== -1) {
+                return foulCardIndex; // Foul player becomes the absolute target target
+            }
+
             const leadSuit = cards[0].card.suit.name;
             let broken = cards.some(c => c.card.suit.name !== leadSuit);
             if (!broken) return null;
@@ -586,13 +621,13 @@
             return roomState.table_cards.some(item => item.owner === myName);
         }
 
-        // NEW CHECK UTILITY: Evaluates if the deck configuration is fresh out of deal state (combined total cards = 52)
-        function isFirstRoundAfterDeal() {
+        function isOpeningRoundAfterDeal() {
             let totalCardsInHands = 0;
             roomState.players.forEach(p => {
                 if (p.hand) totalCardsInHands += p.hand.length;
             });
-            return totalCardsInHands === 52;
+            const tableCardsCount = roomState.table_cards ? roomState.table_cards.length : 0;
+            return (totalCardsInHands + tableCardsCount) === 52;
         }
 
         function getLogicalNextTurnPlayerName() {
@@ -668,9 +703,10 @@
 
             const tableElem = document.getElementById('table-cards'); tableElem.innerHTML = '';
             const targetThullaIdx = getThullaTargetIndex();
+            const openingRoundActive = isOpeningRoundAfterDeal();
             
             const burnBtn = document.getElementById('burn-btn');
-            if (targetThullaIdx !== null) {
+            if (targetThullaIdx !== null && !openingRoundActive) {
                 burnBtn.style.opacity = "0.3";
                 burnBtn.style.cursor = "not-allowed";
             } else {
@@ -690,7 +726,7 @@
             if (isTableEmpty) {
                 if (amIFirstThrower) {
                     tableCenterAlert.style.display = "block";
-                    tableCenterAlert.classList.remove('passive-turn-style');
+                    tableCenterAlert.className = ""; 
                     tableCenterAlert.innerText = "👉 THROW CARD, IT'S YOUR TURN!";
                     
                     handTitleText.style.color = "var(--text-gold)";
@@ -700,7 +736,7 @@
                     throwBtn.style.cursor = "pointer";
                 } else {
                     tableCenterAlert.style.display = "block";
-                    tableCenterAlert.classList.add('passive-turn-style');
+                    tableCenterAlert.className = "passive-turn-style";
                     tableCenterAlert.innerText = `⏳ Waiting for ${roomState.first_thrower} to lead...`;
                     
                     handTitleText.style.color = "white";
@@ -709,21 +745,38 @@
                 }
             } else {
                 tableCenterAlert.style.display = "block";
-                tableCenterAlert.classList.add('passive-turn-style');
                 
-                if (targetThullaIdx !== null) {
+                // MODIFIED BANNER CHECK: Distinguish between active foul penalty configurations and standard breaks
+                const hasFoulHappened = roomState.table_cards.some(c => c.is_foul === true);
+
+                if (hasFoulHappened) {
+                    // Switch to the custom flashing penalty shift banner configuration explicitly
+                    tableCenterAlert.className = "foul-penalty-shift-alert";
+                    const foulCommitterName = roomState.table_cards[targetThullaIdx].owner;
+                    tableCenterAlert.innerText = `💥 RULE BROKEN! THULLA SHIFTED TO ${foulCommitterName.toUpperCase()}! PICK UP MANUALLY.`;
+                    handTitleText.style.color = "white";
+                } else if (targetThullaIdx !== null && openingRoundActive) {
+                    tableCenterAlert.className = "first-turn-break-alert";
+                    tableCenterAlert.innerText = `⚠️ FIRST ROUND FAMILY BROKEN! CHIPS MUST BE MANUALLY BURNED.`;
+                    handTitleText.style.color = "white";
+                } else if (targetThullaIdx !== null && !openingRoundActive) {
+                    tableCenterAlert.className = "passive-turn-style";
                     const currentTargetName = roomState.table_cards[targetThullaIdx].owner;
                     tableCenterAlert.innerText = `🚨 THULLA ACTIVE ON ${currentTargetName.toUpperCase()}! DO NOT PLAY!`;
-                } else if (isItMyLogicalTurn && !hasUserThrownThisRound()) {
-                    tableCenterAlert.innerText = "⚡ Your turn to reply to the trick!";
-                    handTitleText.style.color = "var(--text-gold)";
-                    handTitleText.innerHTML = `Your Hand (${myName}) <span id="my-turn-display" class="my-turn-highlight-text">[YOUR TURN TO REPLY]</span>`;
-                } else {
-                    tableCenterAlert.innerText = `⏳ Turn order path: Waiting for ${logicalTurnPlayerName}...`;
                     handTitleText.style.color = "white";
+                } else {
+                    tableCenterAlert.className = "passive-turn-style";
+                    if (isItMyLogicalTurn && !hasUserThrownThisRound()) {
+                        tableCenterAlert.innerText = "⚡ Your turn to reply to the trick!";
+                        handTitleText.style.color = "var(--text-gold)";
+                        handTitleText.innerHTML = `Your Hand (${myName}) <span id="my-turn-display" class="my-turn-highlight-text">[YOUR TURN TO REPLY]</span>`;
+                    } else {
+                        tableCenterAlert.innerText = `⏳ Turn order path: Waiting for ${logicalTurnPlayerName}...`;
+                        handTitleText.style.color = "white";
+                    }
                 }
 
-                if (hasUserThrownThisRound()) {
+                if (hasUserThrownThisRound() && !hasFoulHappened) {
                     throwBtn.style.opacity = "0.4";
                     throwBtn.style.cursor = "not-allowed";
                 } else {
@@ -736,7 +789,8 @@
                 roomState.table_cards.forEach((item, index) => {
                     let cardDiv = document.createElement('div');
                     cardDiv.className = `card ${item.card.suit.red ? 'red' : ''}`;
-                    let badge = (index === targetThullaIdx) ? `<div class="thulla-badge">🚨 TARGET</div>` : '';
+                    // Anchors the target badge perfectly to the rule-breaker's card frame if a foul tracking parameter is validated
+                    let badge = (index === targetThullaIdx && !openingRoundActive) ? `<div class="thulla-badge">🚨 TARGET</div>` : '';
                     cardDiv.innerHTML = `${badge}<div class="card-rank-top">${item.card.value}</div><div class="suit-center">${item.card.suit.sign}</div><div class="suit-bottom">${item.card.value} ${item.card.suit.sign}</div><div class="card-owner-tag">${item.owner}</div>`;
                     tableElem.appendChild(cardDiv);
                 });
@@ -767,18 +821,26 @@
             const currentTableCount = roomState.table_cards ? roomState.table_cards.length : 0;
             const pickAllBtn = document.getElementById('pick-all-btn');
             
-            if (currentTableCount === 0) {
+            if (currentTableCount === 0 || openingRoundActive) {
                 pickAllBtn.style.opacity = "0.4";
                 pickAllBtn.style.cursor = "not-allowed";
-                pickAllBtn.innerText = "Take All";
+                pickAllBtn.innerText = openingRoundActive && currentTableCount > 0 ? "First Round Lock" : "Take All";
             } else if (targetThullaIdx === null) {
                 pickAllBtn.style.opacity = "0.4";
                 pickAllBtn.style.cursor = "not-allowed";
                 pickAllBtn.innerText = "Same Suit Lock";
             } else {
-                pickAllBtn.style.opacity = "1";
-                pickAllBtn.style.cursor = "pointer";
-                pickAllBtn.innerText = `Take All (${currentTableCount})`;
+                // MODIFIED INTERACTION ACCESS: Only the person flagged under targetIdx can operate pickup sweeps
+                const assignedTargetName = roomState.table_cards[targetThullaIdx].owner;
+                if (myName === assignedTargetName) {
+                    pickAllBtn.style.opacity = "1";
+                    pickAllBtn.style.cursor = "pointer";
+                    pickAllBtn.innerText = `Take All (${currentTableCount})`;
+                } else {
+                    pickAllBtn.style.opacity = "0.4";
+                    pickAllBtn.style.cursor = "not-allowed";
+                    pickAllBtn.innerText = "Target Lock";
+                }
             }
         }
 
@@ -821,65 +883,60 @@
             const isTableEmpty = (!roomState.table_cards || roomState.table_cards.length === 0);
             const amIFirstThrower = (roomState.first_thrower === myName);
             const logicalTurnPlayerName = getLogicalNextTurnPlayerName();
+            const openingRoundActive = isOpeningRoundAfterDeal();
+            const legacyTargetThullaIdx = getThullaTargetIndex();
 
             if (isTableEmpty && !amIFirstThrower) {
                 alert(` Wait for ${roomState.first_thrower} to play lead.`); return;
             }
 
-            if (hasUserThrownThisRound()) { alert("⛔ You already threw a card!"); return; }
-
-            // MODIFIED STEP: Intercept and evaluate card drops before publishing state mutations
-            if (!isTableEmpty) {
+            // MODIFIED PENALTY CHECK: Catch if a player drops an illegal out of turn play while a baseline Thulla already exists
+            if (!isTableEmpty && legacyTargetThullaIdx !== null && !openingRoundActive) {
+                const genuineTargetName = roomState.table_cards[legacyTargetThullaIdx].owner;
+                
+                alert(`💥 RULE BROKEN! A Thulla was already imposed on ${genuineTargetName.toUpperCase()}! Because you threw a card out of turn anyway, the penalty shifts entirely to you!`);
+                
                 let me = roomState.players.find(p => p.name === myName);
-                let targetedCard = me.hand[selectedCardIndex];
+                let illegallyPlayedCard = me.hand.splice(selectedCardIndex, 1)[0];
+                
+                // Push card to the table stack with an explicit foul tracking flag property configuration
+                roomState.table_cards.push({ card: illegallyPlayedCard, owner: myName, is_foul: true });
+                selectedCardIndex = null;
+                
+                pushState();
+                return;
+            }
+
+            // Standard Turn Order Verification Lock (Only run if no foul condition bypass occurred)
+            if (!isTableEmpty && legacyTargetThullaIdx === null && logicalTurnPlayerName !== myName) {
+                alert(`(oops) Turn Restriction: It is currently ${logicalTurnPlayerName}'s turn! Please wait your turn.`);
+                return;
+            }
+
+            if (hasUserThrownThisRound() && legacyTargetThullaIdx === null) { 
+                alert("⛔ You already threw a card!"); 
+                return; 
+            }
+
+            let me = roomState.players.find(p => p.name === myName);
+            let targetedCard = me.hand[selectedCardIndex];
+
+            if (!isTableEmpty) {
                 const leadSuit = roomState.table_cards[0].card.suit.name;
 
-                // Rule Hook: Detect if the card breaks the suit family
+                // Handle regular suit breaks
                 if (targetedCard.suit.name !== leadSuit) {
-                    
-                    // CRITICAL CHECK: If this is the absolute 1st round of the game, intercept and force a clean auto-burn
-                    if (isFirstRoundAfterDeal()) {
-                        alert(`♣️ Opening Round Rule: A suit family was broken on the very first round of the game! The table cards have been automatically burned to the pile. No Thulla is imposed.`);
-                        
-                        // Drop card from hand cleanly without leaving trash on table
-                        me.hand.splice(selectedCardIndex, 1);
+                    if (openingRoundActive) {
+                        let card = me.hand.splice(selectedCardIndex, 1)[0];
+                        roomState.table_cards.push({ card: card, owner: myName });
                         selectedCardIndex = null;
-
-                        // Find who holds the lead card and make them the opener of the next clean round
-                        const roundWinnerName = getHighestCardPlayerName();
-                        roomState.first_thrower = roundWinnerName;
-                        roomState.table_cards = []; // Instantly empty board state
-                        pushState();
-                        return;
-                    }
-
-                    // Standard Mid-Game Rule: Treat as an active Thulla penalty block
-                    const targetThullaIdx = getThullaTargetIndex();
-                    if (targetThullaIdx !== null) {
-                        const genuineTargetName = roomState.table_cards[targetThullaIdx].owner;
-                        alert(`💥 PENALTY FOUL! A Thulla was already imposed on ${genuineTargetName.toUpperCase()}! Because you broke the rule and played anyway, you receive all cards as a penalty!`);
-                        
-                        let illegallyPlayedCard = me.hand.splice(selectedCardIndex, 1)[0];
-                        me.hand.push(illegallyPlayedCard);
-                        while(roomState.table_cards.length > 0) {
-                            me.hand.push(roomState.table_cards.shift().card);
-                        }
-                        sortPlayerHand(me.hand);
-                        selectedCardIndex = null;
-                        roomState.first_thrower = myName;
                         pushState();
                         return;
                     }
                 }
             }
 
-            // Standard Turn Order Verification Lock (Only run if a first-round burn didn't trigger)
-            if (!isTableEmpty && logicalTurnPlayerName !== myName) {
-                alert(`(oops) Turn Restriction: It is currently ${logicalTurnPlayerName}'s turn! Please wait your turn.`);
-                return;
-            }
-
-            let me = roomState.players.find(p => p.name === myName);
+            // Normal Card Drop execution path
             let card = me.hand.splice(selectedCardIndex, 1)[0];
             if (!roomState.table_cards) roomState.table_cards = [];
             roomState.table_cards.push({ card: card, owner: myName });
@@ -891,15 +948,16 @@
             if(!roomState.table_cards || !roomState.table_cards.length) return;
             
             const targetThullaIdx = getThullaTargetIndex();
+            const openingRoundActive = isOpeningRoundAfterDeal();
             
-            if (targetThullaIdx === null) {
-                alert("⛔ Rule Enforcement: You cannot take cards back if everyone played the same family! Use 'Burn Pile' instead.");
+            if (targetThullaIdx === null || openingRoundActive) {
+                alert("⛔ Rule Enforcement: Pickups are locked on clean rounds and the opening trick sequence.");
                 return;
             }
 
             const thullaOwnerName = roomState.table_cards[targetThullaIdx].owner;
             if (myName !== thullaOwnerName) { 
-                alert(`... Only ${thullaOwnerName} received the Thulla and can pick up these cards.`); 
+                alert(`⛔ Access Denied: Only ${thullaOwnerName} is the targeted player and can pick up these cards.`); 
                 return; 
             }
 
@@ -958,7 +1016,7 @@
         }
 
         function clearToPile() { 
-            if(!roomState.table_cards.length || getThullaTargetIndex() !== null) return;
+            if(!roomState.table_cards.length || (getThullaTargetIndex() !== null && !isOpeningRoundAfterDeal())) return;
             if(confirm("Burn table cards completely?")) {
                 roomState.first_thrower = getHighestCardPlayerName();
                 roomState.table_cards = []; pushState(); 
